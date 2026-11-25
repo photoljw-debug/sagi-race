@@ -173,13 +173,21 @@ setInterval(() => {
 
 // ---------- 소리 ----------
 const Snd = window.SagiSound;
-function loopFor(st) { return { lobby: 'bet', bet: 'bet', break: 'bet', run: 'run' }[st] || null; }
+// 배경음악은 대기~경기 내내 끊김 없이, 경주 중엔 말발굽 리듬을 겹치고, 일시정지 땐 작게
+function applyMusic(g) {
+  if (!Snd || !g) return;
+  Snd.bgm(g.status !== 'end');
+  Snd.setRace(g.status === 'run');
+  Snd.setDuck(g.status === 'pause');
+}
 function soundState(prev, g) {
   if (!Snd || !g) return;
-  Snd.setLoop(loopFor(g.status));
-  if (!prev || prev.status === g.status && prev.round === g.round) return;
+  applyMusic(g);
+  if (!prev || (prev.status === g.status && prev.round === g.round)) return;
   if (g.status === 'bet' && prev.status === 'lobby') Snd.fanfareStart();
-  if (g.status === 'bet' && (g.revealed || 0) > (prev.revealed || 0)) setTimeout(() => Snd.chime(), prev.status === 'lobby' ? 900 : 100);
+  if (g.status === 'run' && prev.status === 'bet') Snd.raceStart();
+  if (prev.status === 'run' && g.status !== 'end' && g.status !== 'pause') Snd.roundEnd();
+  if (g.status === 'bet' && (g.revealed || 0) > (prev.revealed || 0)) setTimeout(() => Snd.chime(), prev.status === 'lobby' ? 1600 : 1100);
   if (g.status === 'end' && prev.status !== 'end') Snd.fanfareEnd();
 }
 let lastTick = 0;
@@ -192,14 +200,15 @@ function sndLabel() { const u = document.getElementById('unlockBtn'); if (u) u.s
 let justUnlocked = false;
 document.addEventListener('pointerdown', () => {
   if (!Snd) return;
-  if (!Snd.isReady()) { justUnlocked = true; Snd.unlock(); Snd.setOn(true); setTimeout(() => { justUnlocked = false; sndLabel(); }, 400); }
+  if (!Snd.isReady()) { justUnlocked = true; Snd.unlock(); Snd.setOn(true); applyMusic(G); setTimeout(() => { justUnlocked = false; sndLabel(); }, 400); }
 }, true);
 document.getElementById('sndBtn').onclick = () => {
   if (!Snd) return toast('sound.js 파일을 불러오지 못했어요. GitHub에 sound.js를 올렸는지 확인해 주세요.');
-  if (justUnlocked || !Snd.isReady()) { Snd.unlock(); Snd.setOn(true); setTimeout(() => Snd.chime(), 200); }
+  if (justUnlocked || !Snd.isReady()) { Snd.unlock(); Snd.setOn(true); applyMusic(G); setTimeout(() => Snd.chime(), 300); }
   else { Snd.setOn(!Snd.isOn()); if (Snd.isOn()) Snd.chime(); }
   setTimeout(sndLabel, 300);
 };
+document.getElementById('unlockBtn').onclick = () => { Snd && (Snd.unlock(), Snd.setOn(true), applyMusic(G)); setTimeout(sndLabel, 300); };
 document.getElementById('sndVol').oninput = e => Snd && Snd.setVolume(e.target.value / 100);
 setInterval(() => { if (Snd) sndLabel(); }, 1000);
 
