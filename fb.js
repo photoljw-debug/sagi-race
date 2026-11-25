@@ -1,6 +1,6 @@
 // Firebase 연결 (교사·학생 화면 공용)
 import { initializeApp } from "https://www.gstatic.com/firebasejs/13.1.0/firebase-app.js";
-import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/13.1.0/firebase-auth.js";
+import { getAuth, initializeAuth, inMemoryPersistence, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/13.1.0/firebase-auth.js";
 import {
   getFirestore, doc, collection, getDoc, getDocs, setDoc, updateDoc, deleteDoc, onSnapshot, writeBatch
 } from "https://www.gstatic.com/firebasejs/13.1.0/firebase-firestore.js";
@@ -15,7 +15,9 @@ const firebaseConfig = {
 };
 
 const app = initializeApp(firebaseConfig);
-export const auth = getAuth(app);
+// 주소에 ?test 가 붙으면 탭마다 다른 학생으로 접속 (한 컴퓨터에서 여러 명 시뮬레이션용, 새로고침하면 새 학생)
+export const TEST = new URLSearchParams(location.search).has('test');
+export const auth = TEST ? initializeAuth(app, { persistence: inMemoryPersistence }) : getAuth(app);
 export const db = getFirestore(app);
 export { doc, collection, getDoc, getDocs, setDoc, updateDoc, deleteDoc, onSnapshot, writeBatch };
 

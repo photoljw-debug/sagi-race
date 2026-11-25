@@ -377,6 +377,7 @@ function renderLobby() {
       <div style="font-size:20px;word-break:break-all;margin:6px 0">${esc(url)}</div>
       <div class="hint">게임 코드</div><div class="big">${code}</div>
       <div id="qr" style="display:flex;justify-content:center;margin-top:10px"></div>
+      <div class="hint" style="margin-top:10px">혼자 테스트할 때: 한 브라우저의 여러 탭은 같은 학생으로 인식돼요. 탭마다 다른 학생으로 들어가려면<br><span style="color:var(--text)">${esc(url.replace('index.html#', 'index.html?test#'))}</span></div>
     </div>
     <div class="card"><h2>참가자 (${PLAYERS.size}명)</h2>
       <table>${st.map(c => `<tr class="cls"><td>${esc(c.name)}</td><td>${c.n}명</td></tr>`).join('')}</table>
