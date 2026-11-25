@@ -1,6 +1,6 @@
 // 사기경마 배경음악·효과음 (Web Audio로 직접 연주하는 자작곡 — 외부 음원 없음)
 (function () {
-  let ctx = null, master = null, on = true, vol = 0.6;
+  let ctx = null, master = null, on = true, vol = 0.8;
   let mode = null, step = 0, nextTime = 0;
   const BPM = { bet: 96, run: 152 };
   const SUB = { bet: 2, run: 4 }; // 박당 스텝 수 (bet: 8분음표, run: 16분음표)
@@ -44,10 +44,10 @@
   const BET_ARP = [0, 1, 2, 3, 2, 1, 2, 1];
   function playBet(s, t, dt) {
     const bar = Math.floor(s / 8) % 4, k = s % 8, ch = BET_CHORDS[bar];
-    tone(ch[BET_ARP[k]], t, dt * 1.8, 'triangle', 0.07);
-    if (k === 0 || k === 4) tone(ch[0] - 24, t, dt * 3.5, 'triangle', 0.16);
-    if (k % 2 === 1) noise(t, 0.04, 0.025, 8000, 0.8);
-    if (k === 0 && bar % 2 === 0) tone(ch[3] + 12, t, 0.9, 'sine', 0.035);
+    tone(ch[BET_ARP[k]], t, dt * 1.8, 'triangle', 0.14);
+    if (k === 0 || k === 4) tone(ch[0] - 24, t, dt * 3.5, 'triangle', 0.26);
+    if (k % 2 === 1) noise(t, 0.04, 0.05, 8000, 0.8);
+    if (k === 0 && bar % 2 === 0) tone(ch[3] + 12, t, 0.9, 'sine', 0.07);
   }
 
   // ── 경주: 신나게 달리는 분위기 (C–F–G–C, 말발굽 리듬) ──
@@ -79,7 +79,7 @@
   }, 25);
 
   const api = {
-    unlock() { init(); if (ctx && ctx.state !== 'running') ctx.resume(); },
+    unlock() { init(); if (ctx && ctx.state !== 'running') ctx.resume().then(() => { nextTime = ctx.currentTime + 0.05; }); },
     isReady: ready,
     setLoop(m) { if (m === mode) return; mode = m; step = 0; if (ctx) nextTime = ctx.currentTime + 0.08; },
     setOn(v) { on = v; if (master) master.gain.setTargetAtTime(on ? vol : 0, ctx.currentTime, 0.05); },

@@ -63,7 +63,7 @@ th{color:var(--sub);font-weight:400;font-size:13px}
   <div id="app"><div class="card">연결 중…</div></div>
 </div>
 <div class="toast" id="toast"></div>
-<div class="snd"><button id="sndBtn">🔇 소리 켜기</button><input type="range" id="sndVol" min="0" max="100" value="60" title="음량"></div>
+<div class="snd"><button id="sndBtn">🔇 소리 켜기</button><input type="range" id="sndVol" min="0" max="100" value="80" title="음량"></div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 <script src="logic.js"></script>
@@ -186,9 +186,19 @@ function countdownSound() {
   if (sec >= 1 && sec <= 5 && sec !== lastTick) { lastTick = sec; Snd.tick(sec); }
 }
 function sndLabel() { const b = document.getElementById('sndBtn'); b.textContent = !Snd.isReady() ? '🔇 소리 켜기' : Snd.isOn() ? '🔊 소리 끄기' : '🔈 소리 켜기'; }
-document.addEventListener('pointerdown', () => { if (Snd && !Snd.isReady()) { Snd.unlock(); if (G) Snd.setLoop(loopFor(G.status)); setTimeout(sndLabel, 150); } }, true);
-document.getElementById('sndBtn').onclick = () => { if (!Snd.isReady()) { Snd.unlock(); Snd.setOn(true); } else Snd.setOn(!Snd.isOn()); setTimeout(sndLabel, 150); };
-document.getElementById('sndVol').oninput = e => Snd.setVolume(e.target.value / 100);
+let justUnlocked = false;
+document.addEventListener('pointerdown', () => {
+  if (!Snd) return;
+  if (!Snd.isReady()) { justUnlocked = true; Snd.unlock(); Snd.setOn(true); setTimeout(() => { justUnlocked = false; sndLabel(); }, 400); }
+}, true);
+document.getElementById('sndBtn').onclick = () => {
+  if (!Snd) return toast('sound.js 파일을 불러오지 못했어요. GitHub에 sound.js를 올렸는지 확인해 주세요.');
+  if (justUnlocked || !Snd.isReady()) { Snd.unlock(); Snd.setOn(true); setTimeout(() => Snd.chime(), 200); }
+  else { Snd.setOn(!Snd.isOn()); if (Snd.isOn()) Snd.chime(); }
+  setTimeout(sndLabel, 300);
+};
+document.getElementById('sndVol').oninput = e => Snd && Snd.setVolume(e.target.value / 100);
+setInterval(() => { if (Snd) sndLabel(); }, 1000);
 
 function timerText() {
   if (G.status === 'pause') return Math.ceil((G.remain || 0) / 1000) + '초';
