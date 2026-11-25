@@ -78,7 +78,7 @@ let uid, code, G = null, ME = null, CL = null, pending = new Array(N).fill(0), s
 const RULES = `<details><summary>📖 규칙 보기</summary><ul>
 <li>순위는 이미 정해져 있어요. 1·2등 말을 추리해서 베팅하세요.</li>
 <li>말 8마리가 12라운드 동안 20칸 코스를 달려요.</li>
-<li>라운드마다 최대 2칩까지, 한 번만 확정할 수 있어요. 17칸 이상 들어간 말에는 베팅할 수 없어요.</li>
+<li>라운드마다 최대 2칩까지 걸 수 있고, 베팅 시간이 끝나기 전까지는 몇 번이든 바꿀 수 있어요. 마감 때 확정된 베팅만 반영돼요. 17칸 이상 들어간 말에는 베팅할 수 없어요.</li>
 <li>단서는 라운드마다 하나씩 우리 반에게만 공개돼요. 반마다 단서가 달라요.</li>
 <li>단서 중 몇 개는 거짓이에요. 개수만 알려 줘요. 거짓 같은 단서는 눌러서 지워 두세요.</li>
 <li>다른 반과 정보를 나눠도 되고, 속여도 돼요. 하지만 다른 반 단서가 진짜라는 보장은 없어요.</li>
@@ -116,13 +116,13 @@ async function enter() {
   document.getElementById('join').onclick = async () => {
     const cls = document.getElementById('cls').value, num = parseInt(document.getElementById('num').value, 10), name = document.getElementById('name').value.trim();
     if (!(num >= 1 && num <= 99) || !name) return toast('번호와 이름을 입력해 주세요');
-    try { await setDoc(doc(db, 'games', code, 'players', uid), { cls, num, name, chips: 20, bets: new Array(N).fill(0), br: 0 }); subscribe(); }
+    try { await setDoc(doc(db, 'games', code, 'players', uid), { cls, num, name, chips: 20, bets: new Array(N).fill(0), br: 0, cur: new Array(N).fill(0) }); subscribe(); }
     catch (e) { toast('참가 실패: ' + e.message); }
   };
 }
 
 function subscribe() {
-  onSnapshot(doc(db, 'games', code), s => { const prev = G && G.round; G = s.data(); if (G.round !== prev) pending.fill(0); render(); });
+  onSnapshot(doc(db, 'games', code), s => { const prev = G && G.round; G = s.data(); if (G.round !== prev) dirty = false; render(); });
   onSnapshot(doc(db, 'games', code, 'players', uid), s => {
     if (!s.exists()) { $app.innerHTML = '<div class="card">선생님이 참가를 취소했어요. 새로고침해서 다시 참가해 주세요.</div>'; document.getElementById('bar').style.display = 'none'; ME = null; return; }
     ME = s.data();
@@ -140,15 +140,21 @@ function timerText() {
 }
 function phaseName(s) { return { lobby: '시작을 기다리는 중', bet: '💰 베팅 시간', run: '🏇 경주 중', break: '☕ 작전 시간', pause: '⏸ 잠깐 멈춤', end: '🏁 경기 종료' }[s] || s; }
 function className(id) { return (G.settings.classes.find(c => c.id === id) || {}).name || ''; }
-const canBet = () => G.status === 'bet' && ME.br !== G.round;
+const canBet = () => G.status === 'bet';
+const sum = a => a.reduce((x, y) => x + y, 0);
+// 이번 라운드에 이미 저장된 베팅 (마감 전까지 바꿀 수 있음)
+const saved = () => (ME.br === G.round && ME.cur) ? ME.cur : new Array(N).fill(0);
+const sameAsSaved = () => saved().every((v, h) => v === pending[h]);
+let dirty = false;
 
 function render() {
   if (!G || !ME) return;
-  const s = G.settings, pend = pending.reduce((a, b) => a + b, 0);
+  if (!dirty || G.status !== 'bet') { pending = saved().slice(); if (G.status !== 'bet') dirty = false; }
+  const s = G.settings, pend = sum(pending), avail = ME.chips + sum(saved()) - pend;
   if (G.status === 'end') return renderEnd();
   const T = G.total || 0;
   const lanes = [...Array(N).keys()].map(h => {
-    const p = G.pos[h], P = (G.pool || [])[h] || 0, mine = ME.bets[h], pd = pending[h];
+    const p = G.pos[h], P = (G.pool || [])[h] || 0, mine = ME.bets[h] - saved()[h], pd = G.status === 'bet' ? pending[h] : 0;
     return `<div class="lane${p >= BLOCK ? ' blocked' : ''}" data-h="${h}"><div class="num" style="background:${COLORS[h]}">${h + 1}</div>
       <div class="track"><div class="zone"></div><div class="goal"></div><div class="fill" style="width:calc(${Math.min(p, GOAL) / GOAL} * (100% - 30px) + 15px);background:${COLORS[h]}"></div><div class="horse" style="left:calc(${Math.min(p, GOAL) / GOAL} * (100% - 30px));background:${COLORS[h]}"><span>🏇</span></div><div class="cell${p >= 10 ? ' l' : ''}">${p}칸</div></div>
       <div class="info"><div class="odds">${P ? (T / P).toFixed(1) + '배' : '-'}</div><div>칩 ${P}</div><div class="mine">${mine ? '내 ' + mine : ''}${pd ? ' <b style="color:var(--acc)">+' + pd + '</b>' : ''}</div></div></div>`;
@@ -156,7 +162,7 @@ function render() {
   const rev = (CL && CL.revealed) || [];
   const clues = rev.map((t, i) => `<div class="clue${sus.has(i) ? ' sus' : ''}${i === rev.length - 1 && G.status === 'bet' ? ' new' : ''}" data-i="${i}"><span class="k">${i + 1}.</span><span>${esc(t)}</span></div>`).reverse().join('');
   $app.innerHTML = `
-  <header><h1>🏇 ${esc(className(ME.cls))} · ${esc(ME.name)}</h1><div class="pill">칩 <b>${ME.chips - pend}</b></div></header>
+  <header><h1>🏇 ${esc(className(ME.cls))} · ${esc(ME.name)}</h1><div class="pill">칩 <b>${avail}</b></div></header>
   <div class="card status"><div><div class="hint">라운드 ${Math.max(G.round, 0)}/${ROUNDS}</div><div class="ph">${phaseName(G.status)}</div></div><div class="tm" id="tm">${timerText()}</div></div>
   ${G.status === 'break' ? `<div class="banner">☕ 작전 시간이에요! 다른 반과 단서를 주고받아도 돼요. 다른 반 단서가 진짜인지는 아무도 몰라요.</div>` : ''}
   <div class="card"><h2>경주로 <span>판돈 ${T}칩 · 말을 탭해서 베팅</span></h2>${lanes}
@@ -173,34 +179,39 @@ function render() {
   renderBar();
 }
 function renderBar() {
-  const bar = document.getElementById('bar'), pend = pending.reduce((a, b) => a + b, 0);
+  const bar = document.getElementById('bar'), pend = sum(pending), sv = saved(), svSum = sum(sv), same = sameAsSaved();
+  const desc = a => a.map((v, h) => v ? `${h + 1}번×${v}` : '').filter(Boolean).join(', ');
   bar.style.display = G.status === 'end' ? 'none' : 'block';
   let msg;
   if (G.status === 'lobby') msg = '선생님이 시작하면 베팅할 수 있어요.';
   else if (G.status !== 'bet') msg = '베팅 시간이 아니에요.';
-  else if (ME.br === G.round) msg = '✅ 이번 라운드 베팅 완료!';
-  else msg = `이번 라운드 베팅 <b style="color:var(--acc)">${pend}</b>/${MAXBET}칩 · 확정해야 반영돼요`;
+  else if (same && svSum) msg = `✅ ${desc(sv)} 확정 · 마감 전까지 바꿀 수 있어요`;
+  else if (same) msg = `이번 라운드 베팅 0/${MAXBET}칩 · 말을 탭해서 고르세요`;
+  else msg = `<b style="color:var(--acc)">${pend ? desc(pending) : '베팅 없음'}</b> · <b>확정</b>을 눌러야 반영돼요`;
   document.getElementById('barMsg').innerHTML = msg;
-  document.getElementById('goBtn').disabled = !canBet() || !pend || sending;
-  document.getElementById('clearBtn').disabled = !pend;
+  const go = document.getElementById('goBtn');
+  go.textContent = svSum ? '변경 확정' : '베팅 확정';
+  go.disabled = !canBet() || same || sending;
+  document.getElementById('clearBtn').textContent = '초기화';
+  document.getElementById('clearBtn').disabled = !canBet() || !pend;
 }
 function tap(h) {
-  if (!canBet()) return toast(G.status === 'bet' ? '이번 라운드는 이미 베팅했어요' : '지금은 베팅 시간이 아니에요');
+  if (!canBet()) return toast('지금은 베팅 시간이 아니에요');
   if (G.pos[h] >= BLOCK) return toast('17칸 이상 들어간 말에는 베팅할 수 없어요');
-  const pend = pending.reduce((a, b) => a + b, 0);
-  if (pend >= MAXBET) return toast('한 라운드에 최대 2칩까지예요');
-  if (ME.chips - pend <= 0) return toast('칩이 없어요');
-  pending[h]++; render();
+  const pend = sum(pending);
+  if (pend >= MAXBET) return toast('최대 2칩이에요. 바꾸려면 초기화 후 다시 고르세요');
+  if (ME.chips + sum(saved()) - pend <= 0) return toast('칩이 없어요');
+  pending[h]++; dirty = true; render();
 }
-document.getElementById('clearBtn').onclick = () => { pending.fill(0); render(); };
+document.getElementById('clearBtn').onclick = () => { pending.fill(0); dirty = true; render(); };
 document.getElementById('goBtn').onclick = async () => {
-  const d = pending.reduce((a, b) => a + b, 0);
-  if (!d || !canBet()) return;
+  if (!canBet() || sameAsSaved()) return;
+  const sv = saved(), cur = pending.slice();
   sending = true; renderBar();
   try {
-    await updateDoc(doc(db, 'games', code, 'players', uid), { bets: ME.bets.map((v, h) => v + pending[h]), chips: ME.chips - d, br: G.round });
-    pending.fill(0); toast('베팅 완료!');
-  } catch (e) { toast('베팅이 반영되지 않았어요 (시간이 끝났을 수 있어요)'); }
+    await updateDoc(doc(db, 'games', code, 'players', uid), { bets: ME.bets.map((v, h) => v - sv[h] + cur[h]), chips: ME.chips + sum(sv) - sum(cur), br: G.round, cur });
+    dirty = false; toast(sum(cur) ? '베팅 확정!' : '이번 라운드 베팅을 취소했어요');
+  } catch (e) { toast('반영되지 않았어요 (베팅 시간이 끝났을 수 있어요)'); }
   sending = false; render();
 };
 

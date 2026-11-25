@@ -287,7 +287,7 @@ function classStats() {
   const s = G.settings;
   return s.classes.map(c => {
     let n = 0, done = 0, chips = 0, bet = 0;
-    PLAYERS.forEach(p => { if (p.cls !== c.id) return; n++; if (p.br === G.round) done++; chips += p.chips; bet += p.bets.reduce((a, b) => a + b, 0); });
+    PLAYERS.forEach(p => { if (p.cls !== c.id) return; n++; if (p.br === G.round && (p.cur || []).some(v => v > 0)) done++; chips += p.chips; bet += p.bets.reduce((a, b) => a + b, 0); });
     return { ...c, n, done, chips, bet };
   });
 }
