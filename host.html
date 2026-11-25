@@ -93,7 +93,7 @@ function renderSetup() {
       <div><label>반마다 단서 수 (6~12)</label><input id="sC" type="number" min="6" max="12" value="10"></div>
       <div><label>그중 거짓 단서 수</label><input id="sL" type="number" min="0" max="4" value="2"></div>
       <div><label>베팅 시간 (초)</label><input id="sBet" type="number" min="10" value="45"></div>
-      <div><label>작전 시간 (초, 3·6·9라운드 뒤)</label><input id="sBreak" type="number" min="10" value="90"></div>
+      <div><label>작전 시간 (초, 3·6·9라운드 뒤 · 0이면 없음)</label><input id="sBreak" type="number" min="0" value="0"></div>
       <div><label>경주 연출 시간 (초)</label><input id="sRun" type="number" min="3" value="5"></div>
     </div>
     <p class="hint">모든 반이 같은 경주를 봐요. 단서는 반마다 다르지만, 공개될 때마다 남는 경우의 수가 비슷하도록(같은 난이도) 만들어요. 거짓 단서는 모든 반에서 같은 차례에 섞여 있어요. 단서는 1라운드부터 한 라운드에 하나씩 공개돼요.</p>
@@ -117,7 +117,7 @@ async function createGame() {
   const L = Math.max(0, Math.min(4, +document.getElementById('sL').value || 0));
   const settings = { classes: names.map((n, i) => ({ id: 'c' + (i + 1), name: n })), C, L,
     betSec: Math.max(10, +document.getElementById('sBet').value || 45),
-    breakSec: Math.max(10, +document.getElementById('sBreak').value || 90),
+    breakSec: Math.max(0, parseInt(document.getElementById('sBreak').value, 10) || 0),
     runSec: Math.max(3, +document.getElementById('sRun').value || 5) };
   if (names.length < 2) return toast('반을 2개 이상 적어 주세요');
   if (L * 2 >= C) return toast('거짓 단서가 너무 많아요');
@@ -187,7 +187,7 @@ async function advance() {
   } else if (g.status === 'run') {
     const { pool, total } = calcPool();
     if (g.round >= ROUNDS) return finish(pool, total);
-    if (g.round % 3 === 0) await updateDoc(gref, { status: 'break', pool, total, endsAt: Date.now() + s.breakSec * 1000 });
+    if (g.round % 3 === 0 && s.breakSec > 0) await updateDoc(gref, { status: 'break', pool, total, endsAt: Date.now() + s.breakSec * 1000 });
     else await startBet(g.round + 1, { pool, total });
   } else if (g.status === 'break') {
     await startBet(g.round + 1, {});
