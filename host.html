@@ -28,11 +28,14 @@ button:disabled{opacity:.4;cursor:default}
 @media(max-width:900px){.main{grid-template-columns:1fr}}
 .lane{display:flex;align-items:center;gap:12px;padding:6px 0}
 .num{flex:0 0 40px;height:40px;border-radius:50%;display:grid;place-items:center;font-weight:800;font-size:20px;color:#111}
-.track{flex:1;position:relative;height:44px;border-radius:8px;background:#1d3226;background-image:repeating-linear-gradient(90deg,transparent 0,transparent calc(5% - 1px),rgba(255,255,255,.07) calc(5% - 1px),rgba(255,255,255,.07) 5%);overflow:hidden}
-.zone{position:absolute;top:0;bottom:0;left:85%;width:15%;background:rgba(255,107,107,.15)}
+.track{flex:1;position:relative;height:50px;border-radius:10px;background:#3d7a52;background-image:repeating-linear-gradient(90deg,transparent 0,transparent calc(5% - 1px),rgba(255,255,255,.22) calc(5% - 1px),rgba(255,255,255,.22) 5%);overflow:hidden;box-shadow:inset 0 0 0 1px rgba(255,255,255,.15)}
+.fill{position:absolute;left:0;top:0;bottom:0;opacity:.55;transition:width 2.5s cubic-bezier(.3,.7,.3,1)}
+.zone{position:absolute;top:0;bottom:0;left:85%;width:15%;background:rgba(255,90,90,.35)}
 .goal{position:absolute;top:0;bottom:0;right:0;width:5px;background:repeating-linear-gradient(0deg,#fff 0 6px,#111 6px 12px)}
-.horse{position:absolute;top:2px;font-size:32px;transition:left 2.5s cubic-bezier(.3,.7,.3,1);transform:scaleX(-1)}
-.cell{position:absolute;right:10px;top:10px;font-size:14px;color:var(--sub)}
+.horse{position:absolute;top:3px;width:44px;height:44px;border-radius:50%;display:grid;place-items:center;border:3px solid #fff;box-shadow:0 0 10px rgba(255,255,255,.8),0 2px 6px rgba(0,0,0,.5);transition:left 2.5s cubic-bezier(.3,.7,.3,1);z-index:2}
+.horse span{font-size:28px;line-height:1;transform:scaleX(-1);display:block}
+.cell.l{left:12px;right:auto}
+.cell{position:absolute;right:12px;top:12px;font-size:16px;font-weight:800;color:#fff;text-shadow:0 1px 3px #000;z-index:1}
 .odds{flex:0 0 90px;text-align:right;font-size:20px;font-weight:800;color:var(--acc)}
 .odds small{display:block;font-size:12px;color:var(--sub);font-weight:400}
 table{width:100%;border-collapse:collapse}
@@ -266,7 +269,7 @@ function trackHTML() {
     const p = G.pos[h], P = (G.pool || [])[h] || 0;
     return `<div class="lane"><div class="num" style="background:${COLORS[h]}">${h + 1}</div>
       <div class="track"><div class="zone"></div><div class="goal"></div>
-      <div class="horse" style="left:calc(${Math.min(p, GOAL) / GOAL} * (100% - 40px))">🏇</div><div class="cell">${p}칸</div></div>
+      <div class="fill" style="width:calc(${Math.min(p, GOAL) / GOAL} * (100% - 44px) + 22px);background:${COLORS[h]}"></div><div class="horse" style="left:calc(${Math.min(p, GOAL) / GOAL} * (100% - 44px));background:${COLORS[h]}"><span>🏇</span></div><div class="cell${p >= 10 ? ' l' : ''}">${p}칸</div></div>
       <div class="odds">${P ? (T / P).toFixed(1) + '배' : '-'}<small>칩 ${P}</small></div></div>`;
   }).join('');
 }

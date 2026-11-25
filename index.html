@@ -23,11 +23,14 @@ h1{font-size:19px;margin:0}
 .lane:active{background:#21362a}
 .lane.blocked{opacity:.5}
 .num{flex:0 0 26px;height:26px;border-radius:50%;display:grid;place-items:center;font-weight:700;font-size:13px;color:#111}
-.track{flex:1;position:relative;height:28px;border-radius:6px;background:#1d3226;background-image:repeating-linear-gradient(90deg,transparent 0,transparent calc(5% - 1px),rgba(255,255,255,.06) calc(5% - 1px),rgba(255,255,255,.06) 5%);overflow:hidden}
-.zone{position:absolute;top:0;bottom:0;left:85%;width:15%;background:rgba(255,107,107,.13)}
+.track{flex:1;position:relative;height:34px;border-radius:8px;background:#3d7a52;background-image:repeating-linear-gradient(90deg,transparent 0,transparent calc(5% - 1px),rgba(255,255,255,.22) calc(5% - 1px),rgba(255,255,255,.22) 5%);overflow:hidden;box-shadow:inset 0 0 0 1px rgba(255,255,255,.15)}
+.fill{position:absolute;left:0;top:0;bottom:0;opacity:.55;transition:width 2s cubic-bezier(.3,.7,.3,1)}
+.zone{position:absolute;top:0;bottom:0;left:85%;width:15%;background:rgba(255,90,90,.35)}
 .goal{position:absolute;top:0;bottom:0;right:0;width:3px;background:repeating-linear-gradient(0deg,#fff 0 4px,#111 4px 8px)}
-.horse{position:absolute;top:1px;font-size:20px;transition:left 2s cubic-bezier(.3,.7,.3,1);transform:scaleX(-1)}
-.cell{position:absolute;right:6px;top:5px;font-size:11px;color:var(--sub)}
+.horse{position:absolute;top:2px;width:30px;height:30px;border-radius:50%;display:grid;place-items:center;border:2px solid #fff;box-shadow:0 0 7px rgba(255,255,255,.75),0 1px 4px rgba(0,0,0,.5);transition:left 2s cubic-bezier(.3,.7,.3,1);z-index:2}
+.horse span{font-size:18px;line-height:1;transform:scaleX(-1);display:block}
+.cell.l{left:7px;right:auto}
+.cell{position:absolute;right:7px;top:8px;font-size:12px;font-weight:800;color:#fff;text-shadow:0 1px 3px #000;z-index:1}
 .info{flex:0 0 70px;text-align:right;font-size:11px;line-height:1.25}
 .info .odds{color:var(--acc);font-weight:700;font-size:13px}
 .info .mine{color:var(--ok)}
@@ -147,7 +150,7 @@ function render() {
   const lanes = [...Array(N).keys()].map(h => {
     const p = G.pos[h], P = (G.pool || [])[h] || 0, mine = ME.bets[h], pd = pending[h];
     return `<div class="lane${p >= BLOCK ? ' blocked' : ''}" data-h="${h}"><div class="num" style="background:${COLORS[h]}">${h + 1}</div>
-      <div class="track"><div class="zone"></div><div class="goal"></div><div class="horse" style="left:calc(${Math.min(p, GOAL) / GOAL} * (100% - 26px))">🏇</div><div class="cell">${p}칸</div></div>
+      <div class="track"><div class="zone"></div><div class="goal"></div><div class="fill" style="width:calc(${Math.min(p, GOAL) / GOAL} * (100% - 30px) + 15px);background:${COLORS[h]}"></div><div class="horse" style="left:calc(${Math.min(p, GOAL) / GOAL} * (100% - 30px));background:${COLORS[h]}"><span>🏇</span></div><div class="cell${p >= 10 ? ' l' : ''}">${p}칸</div></div>
       <div class="info"><div class="odds">${P ? (T / P).toFixed(1) + '배' : '-'}</div><div>칩 ${P}</div><div class="mine">${mine ? '내 ' + mine : ''}${pd ? ' <b style="color:var(--acc)">+' + pd + '</b>' : ''}</div></div></div>`;
   }).join('');
   const rev = (CL && CL.revealed) || [];
