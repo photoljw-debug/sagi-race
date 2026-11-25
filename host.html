@@ -53,6 +53,9 @@ th{color:var(--sub);font-weight:400;font-size:13px}
 .toast{position:fixed;left:50%;top:14px;transform:translateX(-50%);background:#000d;color:#fff;padding:10px 16px;border-radius:999px;opacity:0;transition:opacity .2s;pointer-events:none;z-index:9}
 .toast.on{opacity:1}
 .hidden{display:none}
+.snd{position:fixed;right:14px;bottom:14px;background:#17271ee6;border:1px solid var(--line);border-radius:999px;padding:6px 12px;display:flex;align-items:center;gap:8px;z-index:8}
+.snd button{padding:6px 10px;background:#2a4234;color:var(--text);font-size:14px}
+.snd input{width:110px;accent-color:var(--acc)}
 </style>
 </head>
 <body>
@@ -60,9 +63,11 @@ th{color:var(--sub);font-weight:400;font-size:13px}
   <div id="app"><div class="card">연결 중…</div></div>
 </div>
 <div class="toast" id="toast"></div>
+<div class="snd"><button id="sndBtn">🔇 소리 켜기</button><input type="range" id="sndVol" min="0" max="100" value="60" title="음량"></div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 <script src="logic.js"></script>
+<script src="sound.js"></script>
 <script type="module">
 import { db, login, doc, collection, getDoc, setDoc, updateDoc, deleteDoc, onSnapshot, writeBatch, COLORS, N, ROUNDS, GOAL, BLOCK, esc, payout } from './fb.js';
 
@@ -149,7 +154,7 @@ async function attach(c) {
   const s = await getDoc(doc(db, 'games', code, 'secret', 'main'));
   SEC = s.data();
   unsub.forEach(f => f()); unsub = [];
-  unsub.push(onSnapshot(gref, snap => { G = snap.data(); render(); }));
+  unsub.push(onSnapshot(gref, snap => { const prev = G; G = snap.data(); soundState(prev, G); render(); }));
   unsub.push(onSnapshot(collection(db, 'games', code, 'players'), qs => {
     PLAYERS = new Map(); qs.forEach(d => PLAYERS.set(d.id, d.data())); render();
   }));
@@ -159,8 +164,31 @@ setInterval(() => {
   if (!G) return;
   const t = document.getElementById('timer');
   if (t) t.textContent = timerText();
+  countdownSound();
   tick();
-}, 300);
+}, 200);
+
+// ---------- 소리 ----------
+const Snd = window.SagiSound;
+function loopFor(st) { return { lobby: 'bet', bet: 'bet', break: 'bet', run: 'run' }[st] || null; }
+function soundState(prev, g) {
+  if (!Snd || !g) return;
+  Snd.setLoop(loopFor(g.status));
+  if (!prev || prev.status === g.status && prev.round === g.round) return;
+  if (g.status === 'bet' && prev.status === 'lobby') Snd.fanfareStart();
+  if (g.status === 'bet' && (g.revealed || 0) > (prev.revealed || 0)) setTimeout(() => Snd.chime(), prev.status === 'lobby' ? 900 : 100);
+  if (g.status === 'end' && prev.status !== 'end') Snd.fanfareEnd();
+}
+let lastTick = 0;
+function countdownSound() {
+  if (!Snd || G.status !== 'bet') { lastTick = 0; return; }
+  const sec = Math.ceil((G.endsAt - Date.now()) / 1000);
+  if (sec >= 1 && sec <= 5 && sec !== lastTick) { lastTick = sec; Snd.tick(sec); }
+}
+function sndLabel() { const b = document.getElementById('sndBtn'); b.textContent = !Snd.isReady() ? '🔇 소리 켜기' : Snd.isOn() ? '🔊 소리 끄기' : '🔈 소리 켜기'; }
+document.addEventListener('pointerdown', () => { if (Snd && !Snd.isReady()) { Snd.unlock(); if (G) Snd.setLoop(loopFor(G.status)); setTimeout(sndLabel, 150); } }, true);
+document.getElementById('sndBtn').onclick = () => { if (!Snd.isReady()) { Snd.unlock(); Snd.setOn(true); } else Snd.setOn(!Snd.isOn()); setTimeout(sndLabel, 150); };
+document.getElementById('sndVol').oninput = e => Snd.setVolume(e.target.value / 100);
 
 function timerText() {
   if (G.status === 'pause') return Math.ceil((G.remain || 0) / 1000) + '초';
