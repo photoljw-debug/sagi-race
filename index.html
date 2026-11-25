@@ -55,6 +55,8 @@ td,th{padding:6px 4px;border-bottom:1px solid var(--line);text-align:left}
 th{color:var(--sub);font-weight:400;font-size:12px}
 .toast{position:fixed;left:50%;top:14px;transform:translateX(-50%);background:#000d;color:#fff;padding:8px 14px;border-radius:999px;font-size:13px;opacity:0;transition:opacity .2s;pointer-events:none;z-index:9}
 .toast.on{opacity:1}
+.sndm{position:fixed;right:10px;top:10px;z-index:8;background:#17271ee6;border:1px solid var(--line);color:var(--text);border-radius:999px;padding:6px 10px;font-size:13px;font-weight:700}
+header{padding-right:96px}
 details summary{cursor:pointer;color:var(--sub);font-size:13px}
 details li{font-size:13px;color:#d6e4da}
 </style>
@@ -67,6 +69,8 @@ details li{font-size:13px;color:#d6e4da}
   <button class="btn" id="goBtn">베팅 확정</button>
 </div></div>
 <div class="toast" id="toast"></div>
+<button class="sndm" id="sndMode">🔔 효과음</button>
+<script src="sound.js"></script>
 
 <script type="module">
 import { db, login, doc, getDoc, setDoc, updateDoc, onSnapshot, COLORS, N, ROUNDS, GOAL, BLOCK, MAXBET, esc, payout } from './fb.js';
@@ -122,17 +126,58 @@ async function enter() {
 }
 
 function subscribe() {
-  onSnapshot(doc(db, 'games', code), s => { const prev = G && G.round; G = s.data(); if (G.round !== prev) dirty = false; render(); });
+  onSnapshot(doc(db, 'games', code), s => { const old = G, prev = G && G.round; G = s.data(); if (G.round !== prev) dirty = false; soundState(old, G); render(); });
   onSnapshot(doc(db, 'games', code, 'players', uid), s => {
     if (!s.exists()) { $app.innerHTML = '<div class="card">선생님이 참가를 취소했어요. 새로고침해서 다시 참가해 주세요.</div>'; document.getElementById('bar').style.display = 'none'; ME = null; return; }
     ME = s.data();
-    if (!CLsub) { CLsub = onSnapshot(doc(db, 'games', code, 'classes', ME.cls), c => { CL = c.data(); render(); }, e => toast('단서를 못 불러왔어요: ' + e.message)); }
+    if (!CLsub) { CLsub = onSnapshot(doc(db, 'games', code, 'classes', ME.cls), c => { const n0 = (CL && CL.revealed || []).length; CL = c.data(); if (CL && (CL.revealed || []).length > n0 && n0 > 0) sfx(() => Snd.chime(), 900); render(); }, e => toast('단서를 못 불러왔어요: ' + e.message)); }
     render();
   });
 }
 let CLsub = null;
 
-setInterval(() => { const t = document.getElementById('tm'); if (t && G) t.textContent = timerText(); }, 250);
+setInterval(() => { const t = document.getElementById('tm'); if (t && G) t.textContent = timerText(); countdownSound(); }, 250);
+
+// ---------- 소리 (학생 휴대폰) ----------
+// 모드: off(무음) / sfx(효과음만, 기본) / all(배경음악+효과음)
+const Snd = window.SagiSound;
+let sndMode = 'sfx';
+try { sndMode = localStorage.getItem('sagiSndMode') || 'sfx'; } catch (e) {}
+const MODE_LABEL = { off: '🔇 무음', sfx: '🔔 효과음', all: '🎵 음악' };
+function applyMusic() {
+  if (!Snd) return;
+  Snd.setOn(sndMode !== 'off');
+  Snd.bgm(sndMode === 'all' && !!G && G.status !== 'end');
+  Snd.setRace(!!G && G.status === 'run');
+  Snd.setDuck(!!G && G.status === 'pause');
+  document.getElementById('sndMode').textContent = MODE_LABEL[sndMode] + (Snd.isReady() ? '' : ' (탭해서 켜기)');
+}
+function sfx(f, delay) { if (Snd && sndMode !== 'off') setTimeout(() => Snd.isReady() && f(), delay || 0); }
+function soundState(prev, g) {
+  applyMusic();
+  if (!prev || !g || (prev.status === g.status && prev.round === g.round)) return;
+  if (g.status === 'bet' && prev.status === 'lobby') sfx(() => Snd.fanfareStart());
+  if (g.status === 'run' && prev.status === 'bet') sfx(() => Snd.raceStart());
+  if (prev.status === 'run' && g.status !== 'end' && g.status !== 'pause') sfx(() => Snd.roundEnd());
+  if (g.status === 'end' && prev.status !== 'end') sfx(() => Snd.fanfareEnd());
+}
+let lastTick = 0;
+function countdownSound() {
+  if (!G || G.status !== 'bet') { lastTick = 0; return; }
+  const sec = Math.ceil((G.endsAt - Date.now()) / 1000);
+  if (sec >= 1 && sec <= 5 && sec !== lastTick) { lastTick = sec; sfx(() => Snd.tick(sec)); }
+}
+if (Snd) Snd.setVolume(0.6);
+['click', 'touchend', 'keydown'].forEach(ev => document.addEventListener(ev, () => setTimeout(applyMusic, 200)));
+document.getElementById('sndMode').onclick = () => {
+  if (!Snd) return toast('소리 파일을 불러오지 못했어요');
+  Snd.unlock();
+  sndMode = { off: 'sfx', sfx: 'all', all: 'off' }[sndMode];
+  try { localStorage.setItem('sagiSndMode', sndMode); } catch (e) {}
+  applyMusic(); toast({ off: '소리를 껐어요', sfx: '효과음만 켜요', all: '배경음악과 효과음을 켜요' }[sndMode]);
+  if (sndMode !== 'off') setTimeout(() => Snd.chime(), 250);
+};
+applyMusic();
 function timerText() {
   if (G.status === 'pause') return '⏸';
   if (!['bet', 'run', 'break'].includes(G.status)) return '';
