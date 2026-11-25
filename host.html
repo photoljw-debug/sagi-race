@@ -175,7 +175,8 @@ setInterval(() => {
 const Snd = window.SagiSound;
 // 배경음악은 대기~경기 내내 끊김 없이, 경주 중엔 말발굽 리듬을 겹치고, 일시정지 땐 작게
 function applyMusic(g) {
-  if (!Snd || !g) return;
+  if (!Snd) return;
+  if (!g) { Snd.bgm(true); Snd.setRace(false); Snd.setDuck(false); return; } // 설정 화면에서도 배경음악
   Snd.bgm(g.status !== 'end');
   Snd.setRace(g.status === 'run');
   Snd.setDuck(g.status === 'pause');
@@ -197,15 +198,14 @@ function countdownSound() {
   if (sec >= 1 && sec <= 5 && sec !== lastTick) { lastTick = sec; Snd.tick(sec); }
 }
 function sndLabel() { const u = document.getElementById('unlockBtn'); if (u) u.style.display = Snd && Snd.isReady() ? 'none' : 'block'; const b = document.getElementById('sndBtn'); b.textContent = !Snd.isReady() ? '🔇 소리 켜기' : Snd.isOn() ? '🔊 소리 끄기' : '🔈 소리 켜기'; }
-let justUnlocked = false;
-document.addEventListener('pointerdown', () => {
-  if (!Snd) return;
-  if (!Snd.isReady()) { justUnlocked = true; Snd.unlock(); Snd.setOn(true); applyMusic(G); setTimeout(() => { justUnlocked = false; sndLabel(); }, 400); }
-}, true);
-document.getElementById('sndBtn').onclick = () => {
+// 첫 클릭·터치에 sound.js가 소리를 켜요. 그 직후 배경음악 상태를 맞춰 줌
+['click', 'touchend', 'keydown'].forEach(ev => document.addEventListener(ev, () => { if (Snd) { applyMusic(G); setTimeout(sndLabel, 300); } }));
+document.getElementById('sndBtn').onclick = e => {
+  e.stopPropagation();
   if (!Snd) return toast('sound.js 파일을 불러오지 못했어요. GitHub에 sound.js를 올렸는지 확인해 주세요.');
-  if (justUnlocked || !Snd.isReady()) { Snd.unlock(); Snd.setOn(true); applyMusic(G); setTimeout(() => Snd.chime(), 300); }
-  else { Snd.setOn(!Snd.isOn()); if (Snd.isOn()) Snd.chime(); }
+  Snd.unlock();
+  if (Snd.justUnlocked() || !Snd.isOn()) { Snd.setOn(true); applyMusic(G); setTimeout(() => Snd.chime(), 300); }
+  else Snd.setOn(false);
   setTimeout(sndLabel, 300);
 };
 document.getElementById('unlockBtn').onclick = () => { Snd && (Snd.unlock(), Snd.setOn(true), applyMusic(G)); setTimeout(sndLabel, 300); };

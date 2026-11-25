@@ -5,7 +5,7 @@
 (function () {
   let ctx = null, comp = null, master = null, bgmBus = null, sfxBus = null;
   let on = true, vol = 0.9, bgmOn = false, race = false, duck = false;
-  let step = 0, nextTime = 0;
+  let step = 0, nextTime = 0, unlockedAt = 0;
   const BPM = 110, DT = 60 / BPM / 4; // 16분음표
   const mtof = m => 440 * Math.pow(2, (m - 69) / 12);
 
@@ -121,11 +121,13 @@
   const api = {
     // 브라우저는 클릭·터치가 있어야 소리를 낼 수 있어요
     unlock() {
+      if (!ready()) unlockedAt = Date.now();
       init(); if (!ctx) return;
       if (ctx.state !== 'running') ctx.resume().then(() => { nextTime = ctx.currentTime + 0.05; });
       try { const b = ctx.createBuffer(1, 1, 22050), s = ctx.createBufferSource(); s.buffer = b; s.connect(ctx.destination); s.start(0); } catch (e) {}
     },
     isReady: ready,
+    justUnlocked: () => Date.now() - unlockedAt < 1500,
     setOn(v) { on = v; if (master) master.gain.setTargetAtTime(on ? vol : 0, ctx.currentTime, 0.05); },
     isOn: () => on,
     setVolume(v) { vol = v; if (master && on) master.gain.setTargetAtTime(vol, ctx.currentTime, 0.05); },
