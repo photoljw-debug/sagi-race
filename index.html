@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>사기경마</title>
+<style>
+:root{--bg:#0f1a14;--card:#17271e;--line:#2a4234;--text:#eef5ef;--sub:#9db5a5;--acc:#f5c542;--red:#ff6b6b;--ok:#5fd38d}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,"Apple SD Gothic Neo","Noto Sans KR",sans-serif;font-size:15px;line-height:1.45}
+.wrap{max-width:640px;margin:0 auto;padding:12px 12px 100px}
+header{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;gap:8px}
+h1{font-size:19px;margin:0}
+.pill{background:var(--card);border:1px solid var(--line);border-radius:999px;padding:4px 10px;font-size:13px;white-space:nowrap}
+.pill b{color:var(--acc)}
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:12px;margin-bottom:12px}
+.card h2{font-size:15px;margin:0 0 8px;display:flex;justify-content:space-between;align-items:center}
+.card h2 span{font-size:12px;color:var(--sub);font-weight:400}
+.status{display:flex;justify-content:space-between;align-items:center}
+.status .ph{font-size:18px;font-weight:800}
+.status .tm{font-size:28px;font-weight:800;color:var(--acc);font-variant-numeric:tabular-nums}
+.lane{display:flex;align-items:center;gap:8px;padding:5px 4px;border-radius:10px;cursor:pointer;user-select:none;-webkit-tap-highlight-color:transparent}
+.lane:active{background:#21362a}
+.lane.blocked{opacity:.5}
+.num{flex:0 0 26px;height:26px;border-radius:50%;display:grid;place-items:center;font-weight:700;font-size:13px;color:#111}
+.track{flex:1;position:relative;height:28px;border-radius:6px;background:#1d3226;background-image:repeating-linear-gradient(90deg,transparent 0,transparent calc(5% - 1px),rgba(255,255,255,.06) calc(5% - 1px),rgba(255,255,255,.06) 5%);overflow:hidden}
+.zone{position:absolute;top:0;bottom:0;left:85%;width:15%;background:rgba(255,107,107,.13)}
+.goal{position:absolute;top:0;bottom:0;right:0;width:3px;background:repeating-linear-gradient(0deg,#fff 0 4px,#111 4px 8px)}
+.horse{position:absolute;top:1px;font-size:20px;transition:left 2s cubic-bezier(.3,.7,.3,1);transform:scaleX(-1)}
+.cell{position:absolute;right:6px;top:5px;font-size:11px;color:var(--sub)}
+.info{flex:0 0 70px;text-align:right;font-size:11px;line-height:1.25}
+.info .odds{color:var(--acc);font-weight:700;font-size:13px}
+.info .mine{color:var(--ok)}
+.bar{position:fixed;left:0;right:0;bottom:0;background:rgba(15,26,20,.97);border-top:1px solid var(--line);padding:10px 12px calc(10px + env(safe-area-inset-bottom))}
+.bar .in{max-width:640px;margin:0 auto;display:flex;gap:8px;align-items:center}
+.bar .msg{flex:1;font-size:13px;color:var(--sub)}
+button{font:inherit;border:0;border-radius:10px;padding:10px 14px;font-weight:700;cursor:pointer}
+.btn{background:var(--acc);color:#1a1a1a}.btn3{background:transparent;color:var(--sub);border:1px solid var(--line)}
+button:disabled{opacity:.4;cursor:default}
+input,select{font:inherit;background:#0f1a14;color:var(--text);border:1px solid var(--line);border-radius:8px;padding:10px;width:100%;margin:4px 0 10px}
+label{font-size:13px;color:var(--sub)}
+.banner{background:#22392b;border-radius:10px;padding:8px 10px;font-size:13px;margin-bottom:8px}
+.clue{background:#1f3428;border-radius:10px;padding:8px 10px;margin:6px 0;font-size:14px;cursor:pointer;display:flex;gap:8px}
+.clue .k{color:var(--sub);flex:0 0 auto}
+.clue.sus{opacity:.5;text-decoration:line-through}
+.clue.new{border:1px solid var(--acc)}
+.clue.lie{border-left:4px solid var(--red)}
+.tag{font-size:11px;padding:1px 6px;border-radius:6px;margin-left:4px;background:#6b2525;color:#ffd0d0}
+.hint{font-size:12px;color:var(--sub);margin-top:4px}
+table{width:100%;border-collapse:collapse;font-size:14px}
+td,th{padding:6px 4px;border-bottom:1px solid var(--line);text-align:left}
+th{color:var(--sub);font-weight:400;font-size:12px}
+.toast{position:fixed;left:50%;top:14px;transform:translateX(-50%);background:#000d;color:#fff;padding:8px 14px;border-radius:999px;font-size:13px;opacity:0;transition:opacity .2s;pointer-events:none;z-index:9}
+.toast.on{opacity:1}
+details summary{cursor:pointer;color:var(--sub);font-size:13px}
+details li{font-size:13px;color:#d6e4da}
+</style>
+</head>
+<body>
+<div class="wrap" id="app"><div class="card">연결 중…</div></div>
+<div class="bar" id="bar" style="display:none"><div class="in">
+  <div class="msg" id="barMsg"></div>
+  <button class="btn3" id="clearBtn">취소</button>
+  <button class="btn" id="goBtn">베팅 확정</button>
+</div></div>
+<div class="toast" id="toast"></div>
+
+<script type="module">
+import { db, login, doc, getDoc, setDoc, updateDoc, onSnapshot, COLORS, N, ROUNDS, GOAL, BLOCK, MAXBET, esc, payout } from './fb.js';
+
+const $app = document.getElementById('app');
+const toast = t => { const el = document.getElementById('toast'); el.textContent = t; el.classList.add('on'); clearTimeout(toast._t); toast._t = setTimeout(() => el.classList.remove('on'), 2200); };
+let uid, code, G = null, ME = null, CL = null, pending = new Array(N).fill(0), sending = false, sus = new Set(), lastSeen = 0;
+
+const RULES = `<details><summary>📖 규칙 보기</summary><ul>
+<li>순위는 이미 정해져 있어요. 1·2등 말을 추리해서 베팅하세요.</li>
+<li>말 8마리가 12라운드 동안 20칸 코스를 달려요.</li>
+<li>라운드마다 최대 2칩까지, 한 번만 확정할 수 있어요. 17칸 이상 들어간 말에는 베팅할 수 없어요.</li>
+<li>단서는 라운드마다 하나씩 우리 반에게만 공개돼요. 반마다 단서가 달라요.</li>
+<li>단서 중 몇 개는 거짓이에요. 개수만 알려 줘요. 거짓 같은 단서는 눌러서 지워 두세요.</li>
+<li>작전 시간에는 다른 반과 정보를 나눠도 되고, 속여도 돼요.</li>
+<li>정산: 1등 말에 건 칩 × 배당, 2등 말에 건 칩 × 배당의 절반. 배당 = 전체 판돈 ÷ 그 말에 걸린 칩. 남은 칩도 점수!</li>
+<li>우리 반 점수 = 반 학생들 최종 칩의 평균.</li></ul></details>`;
+
+(async () => {
+  code = (location.hash || '').replace('#', '').trim().toUpperCase();
+  try { uid = await login(); }
+  catch (e) { $app.innerHTML = `<div class="card">접속에 실패했어요. 선생님께 알려 주세요.<div class="hint">${esc(e.message)}</div></div>`; return; }
+  if (!code) return askCode();
+  enter();
+})();
+
+function askCode(msg) {
+  $app.innerHTML = `<header><h1>🏇 사기경마</h1></header><div class="card"><label>게임 코드</label><input id="code" maxlength="6" placeholder="예: K7QP" style="text-transform:uppercase">
+  ${msg ? `<div class="hint" style="color:var(--red)">${esc(msg)}</div>` : ''}<button class="btn" id="ok" style="width:100%">입장</button></div>`;
+  document.getElementById('ok').onclick = () => { code = document.getElementById('code').value.trim().toUpperCase(); if (code) { location.hash = code; enter(); } };
+}
+
+async function enter() {
+  const g = await getDoc(doc(db, 'games', code)).catch(() => null);
+  if (!g || !g.exists()) return askCode('그런 게임이 없어요. 코드를 확인해 주세요.');
+  G = g.data();
+  try { sus = new Set(JSON.parse(localStorage.getItem('sagiSus_' + code) || '[]')); } catch (e) {}
+  const me = await getDoc(doc(db, 'games', code, 'players', uid)).catch(() => null);
+  if (me && me.exists()) return subscribe();
+  if (G.status === 'end') return askCode('이미 끝난 게임이에요.');
+  $app.innerHTML = `<header><h1>🏇 사기경마</h1><span class="pill">코드 <b>${esc(code)}</b></span></header>
+  <div class="card"><label>반</label><select id="cls">${G.settings.classes.map(c => `<option value="${esc(c.id)}">${esc(c.name)}</option>`).join('')}</select>
+  <label>번호</label><input id="num" type="number" min="1" max="99" inputmode="numeric">
+  <label>이름</label><input id="name" maxlength="12">
+  <button class="btn" id="join" style="width:100%">참가하기</button>
+  <div class="hint">한 번 참가하면 반을 바꿀 수 없어요. 이 기기·브라우저로 계속 접속해 주세요.</div></div>`;
+  document.getElementById('join').onclick = async () => {
+    const cls = document.getElementById('cls').value, num = parseInt(document.getElementById('num').value, 10), name = document.getElementById('name').value.trim();
+    if (!(num >= 1 && num <= 99) || !name) return toast('번호와 이름을 입력해 주세요');
+    try { await setDoc(doc(db, 'games', code, 'players', uid), { cls, num, name, chips: 20, bets: new Array(N).fill(0), br: 0 }); subscribe(); }
+    catch (e) { toast('참가 실패: ' + e.message); }
+  };
+}
+
+function subscribe() {
+  onSnapshot(doc(db, 'games', code), s => { const prev = G && G.round; G = s.data(); if (G.round !== prev) pending.fill(0); render(); });
+  onSnapshot(doc(db, 'games', code, 'players', uid), s => {
+    if (!s.exists()) { $app.innerHTML = '<div class="card">선생님이 참가를 취소했어요. 새로고침해서 다시 참가해 주세요.</div>'; document.getElementById('bar').style.display = 'none'; ME = null; return; }
+    ME = s.data();
+    if (!CLsub) { CLsub = onSnapshot(doc(db, 'games', code, 'classes', ME.cls), c => { CL = c.data(); render(); }, e => toast('단서를 못 불러왔어요: ' + e.message)); }
+    render();
+  });
+}
+let CLsub = null;
+
+setInterval(() => { const t = document.getElementById('tm'); if (t && G) t.textContent = timerText(); }, 250);
+function timerText() {
+  if (G.status === 'pause') return '⏸';
+  if (!['bet', 'run', 'break'].includes(G.status)) return '';
+  return Math.max(0, Math.ceil((G.endsAt - Date.now()) / 1000)) + '초';
+}
+function phaseName(s) { return { lobby: '시작을 기다리는 중', bet: '💰 베팅 시간', run: '🏇 경주 중', break: '☕ 작전 시간', pause: '⏸ 잠깐 멈춤', end: '🏁 경기 종료' }[s] || s; }
+function className(id) { return (G.settings.classes.find(c => c.id === id) || {}).name || ''; }
+const canBet = () => G.status === 'bet' && ME.br !== G.round;
+
+function render() {
+  if (!G || !ME) return;
+  const s = G.settings, pend = pending.reduce((a, b) => a + b, 0);
+  if (G.status === 'end') return renderEnd();
+  const T = G.total || 0;
+  const lanes = [...Array(N).keys()].map(h => {
+    const p = G.pos[h], P = (G.pool || [])[h] || 0, mine = ME.bets[h], pd = pending[h];
+    return `<div class="lane${p >= BLOCK ? ' blocked' : ''}" data-h="${h}"><div class="num" style="background:${COLORS[h]}">${h + 1}</div>
+      <div class="track"><div class="zone"></div><div class="goal"></div><div class="horse" style="left:calc(${Math.min(p, GOAL) / GOAL} * (100% - 26px))">🏇</div><div class="cell">${p}칸</div></div>
+      <div class="info"><div class="odds">${P ? (T / P).toFixed(1) + '배' : '-'}</div><div>칩 ${P}</div><div class="mine">${mine ? '내 ' + mine : ''}${pd ? ' <b style="color:var(--acc)">+' + pd + '</b>' : ''}</div></div></div>`;
+  }).join('');
+  const rev = (CL && CL.revealed) || [];
+  const clues = rev.map((t, i) => `<div class="clue${sus.has(i) ? ' sus' : ''}${i === rev.length - 1 && G.status === 'bet' ? ' new' : ''}" data-i="${i}"><span class="k">${i + 1}.</span><span>${esc(t)}</span></div>`).reverse().join('');
+  $app.innerHTML = `
+  <header><h1>🏇 ${esc(className(ME.cls))} · ${esc(ME.name)}</h1><div class="pill">칩 <b>${ME.chips - pend}</b></div></header>
+  <div class="card status"><div><div class="hint">라운드 ${Math.max(G.round, 0)}/${ROUNDS}</div><div class="ph">${phaseName(G.status)}</div></div><div class="tm" id="tm">${timerText()}</div></div>
+  ${G.status === 'break' ? `<div class="banner">☕ 작전 시간이에요! 다른 반과 단서를 주고받아도 돼요. 다른 반 단서가 진짜인지는 아무도 몰라요.</div>` : ''}
+  <div class="card"><h2>경주로 <span>판돈 ${T}칩 · 말을 탭해서 베팅</span></h2>${lanes}
+    <div class="hint">배당 = 전체 판돈 ÷ 그 말에 걸린 칩 (경주가 끝날 때마다 갱신). 빨간 구간(17칸 이상) 말은 베팅 불가.</div></div>
+  <div class="card"><h2>우리 반 단서 <span>${rev.length}/${s.C}개 공개</span></h2>
+    <div class="banner">단서는 모두 <b>${s.C}개</b>이고, 그중 정확히 <b>${s.L}개</b>가 거짓이에요. 라운드마다 하나씩 공개돼요.</div>
+    ${clues || '<div class="hint">게임이 시작되면 첫 단서가 공개돼요.</div>'}
+    <div class="hint">거짓 같은 단서를 누르면 줄을 그어 둘 수 있어요 (나만 보여요).</div></div>
+  <div class="card">${RULES}</div>`;
+  document.querySelectorAll('.lane').forEach(el => el.onclick = () => tap(+el.dataset.h));
+  document.querySelectorAll('.clue').forEach(el => el.onclick = () => { const i = +el.dataset.i; sus.has(i) ? sus.delete(i) : sus.add(i); try { localStorage.setItem('sagiSus_' + code, JSON.stringify([...sus])); } catch (e) {} render(); });
+  if (rev.length > lastSeen && lastSeen > 0) toast('📜 새 단서가 공개됐어요!');
+  lastSeen = rev.length;
+  renderBar();
+}
+function renderBar() {
+  const bar = document.getElementById('bar'), pend = pending.reduce((a, b) => a + b, 0);
+  bar.style.display = G.status === 'end' ? 'none' : 'block';
+  let msg;
+  if (G.status === 'lobby') msg = '선생님이 시작하면 베팅할 수 있어요.';
+  else if (G.status !== 'bet') msg = '베팅 시간이 아니에요.';
+  else if (ME.br === G.round) msg = '✅ 이번 라운드 베팅 완료!';
+  else msg = `이번 라운드 베팅 <b style="color:var(--acc)">${pend}</b>/${MAXBET}칩 · 확정해야 반영돼요`;
+  document.getElementById('barMsg').innerHTML = msg;
+  document.getElementById('goBtn').disabled = !canBet() || !pend || sending;
+  document.getElementById('clearBtn').disabled = !pend;
+}
+function tap(h) {
+  if (!canBet()) return toast(G.status === 'bet' ? '이번 라운드는 이미 베팅했어요' : '지금은 베팅 시간이 아니에요');
+  if (G.pos[h] >= BLOCK) return toast('17칸 이상 들어간 말에는 베팅할 수 없어요');
+  const pend = pending.reduce((a, b) => a + b, 0);
+  if (pend >= MAXBET) return toast('한 라운드에 최대 2칩까지예요');
+  if (ME.chips - pend <= 0) return toast('칩이 없어요');
+  pending[h]++; render();
+}
+document.getElementById('clearBtn').onclick = () => { pending.fill(0); render(); };
+document.getElementById('goBtn').onclick = async () => {
+  const d = pending.reduce((a, b) => a + b, 0);
+  if (!d || !canBet()) return;
+  sending = true; renderBar();
+  try {
+    await updateDoc(doc(db, 'games', code, 'players', uid), { bets: ME.bets.map((v, h) => v + pending[h]), chips: ME.chips - d, br: G.round });
+    pending.fill(0); toast('베팅 완료!');
+  } catch (e) { toast('베팅이 반영되지 않았어요 (시간이 끝났을 수 있어요)'); }
+  sending = false; render();
+};
+
+function renderEnd() {
+  document.getElementById('bar').style.display = 'none';
+  const r = G.result; if (!r) return;
+  const { a, b } = payout(ME.bets, r), score = ME.chips + a + b;
+  const myRank = r.classes.findIndex(c => c.id === ME.cls) + 1;
+  const ans = (CL && CL.answers) || [];
+  $app.innerHTML = `
+  <header><h1>🏁 경기 종료</h1></header>
+  <div class="card"><div>최종 순위: ${r.order.map(h => `<b style="color:${COLORS[h]}">${h + 1}번</b>`).join(' → ')}</div></div>
+  <div class="card"><h2>내 점수 <span>${esc(className(ME.cls))} ${ME.num}번 ${esc(ME.name)}</span></h2>
+    <table><tr><td>남은 칩</td><td>${ME.chips}</td></tr><tr><td>1등 ${r.first + 1}번에 건 ${ME.bets[r.first]}칩 배당</td><td>${a.toFixed(1)}</td></tr>
+    <tr><td>2등 ${r.second + 1}번에 건 ${ME.bets[r.second]}칩 배당(절반)</td><td>${b.toFixed(1)}</td></tr><tr><th>합계</th><th style="color:var(--acc);font-size:18px">${score.toFixed(1)}</th></tr></table></div>
+  <div class="card"><h2>🏆 반별 순위 <span>우리 반 ${myRank}위</span></h2>
+    <table><tr><th>순위</th><th>반</th><th>평균</th><th>인원</th></tr>${r.classes.map((c, i) => `<tr${c.id === ME.cls ? ' style="color:var(--acc)"' : ''}><td>${i + 1}</td><td>${esc(c.name)}</td><td><b>${c.avg}</b></td><td>${c.n}</td></tr>`).join('')}</table></div>
+  <div class="card"><h2>우리 반 단서 정답</h2>${ans.map((x, i) => `<div class="clue${x.lie ? ' lie' : ''}" style="cursor:default"><span class="k">${i + 1}.</span><span>${esc(x.text)}${x.lie ? '<span class="tag">거짓</span>' : ''}</span></div>`).join('')}</div>`;
+}
+</script>
+</body>
+</html>

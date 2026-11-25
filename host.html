@@ -1,0 +1,363 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>사기경마 · 교사용</title>
+<style>
+:root{--bg:#0f1a14;--card:#17271e;--line:#2a4234;--text:#eef5ef;--sub:#9db5a5;--acc:#f5c542;--red:#ff6b6b;--ok:#5fd38d}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,"Apple SD Gothic Neo","Noto Sans KR",sans-serif;line-height:1.45}
+.wrap{max-width:1280px;margin:0 auto;padding:16px}
+h1{margin:0 0 12px;font-size:26px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:16px;margin-bottom:14px}
+.card h2{margin:0 0 10px;font-size:18px}
+label{display:block;font-size:14px;color:var(--sub);margin:8px 0 4px}
+input,select{font:inherit;background:#0f1a14;color:var(--text);border:1px solid var(--line);border-radius:8px;padding:8px 10px;width:100%}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px}
+button{font:inherit;border:0;border-radius:10px;padding:10px 16px;font-weight:700;cursor:pointer}
+.btn{background:var(--acc);color:#1a1a1a}.btn2{background:#2a4234;color:var(--text)}.btn3{background:transparent;color:var(--sub);border:1px solid var(--line)}.danger{background:#5a2222;color:#ffd0d0}
+button:disabled{opacity:.4;cursor:default}
+.row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+.hint{font-size:13px;color:var(--sub)}
+.big{font-size:56px;font-weight:800;color:var(--acc);letter-spacing:4px}
+.top{display:flex;justify-content:space-between;align-items:center;gap:16px;flex-wrap:wrap;margin-bottom:12px}
+.phase{font-size:28px;font-weight:800}
+.timer{font-size:64px;font-weight:800;color:var(--acc);font-variant-numeric:tabular-nums;min-width:140px;text-align:right}
+.main{display:grid;grid-template-columns:2fr 1fr;gap:14px}
+@media(max-width:900px){.main{grid-template-columns:1fr}}
+.lane{display:flex;align-items:center;gap:12px;padding:6px 0}
+.num{flex:0 0 40px;height:40px;border-radius:50%;display:grid;place-items:center;font-weight:800;font-size:20px;color:#111}
+.track{flex:1;position:relative;height:44px;border-radius:8px;background:#1d3226;background-image:repeating-linear-gradient(90deg,transparent 0,transparent calc(5% - 1px),rgba(255,255,255,.07) calc(5% - 1px),rgba(255,255,255,.07) 5%);overflow:hidden}
+.zone{position:absolute;top:0;bottom:0;left:85%;width:15%;background:rgba(255,107,107,.15)}
+.goal{position:absolute;top:0;bottom:0;right:0;width:5px;background:repeating-linear-gradient(0deg,#fff 0 6px,#111 6px 12px)}
+.horse{position:absolute;top:2px;font-size:32px;transition:left 2.5s cubic-bezier(.3,.7,.3,1);transform:scaleX(-1)}
+.cell{position:absolute;right:10px;top:10px;font-size:14px;color:var(--sub)}
+.odds{flex:0 0 90px;text-align:right;font-size:20px;font-weight:800;color:var(--acc)}
+.odds small{display:block;font-size:12px;color:var(--sub);font-weight:400}
+table{width:100%;border-collapse:collapse}
+td,th{padding:8px 6px;border-bottom:1px solid var(--line);text-align:left}
+th{color:var(--sub);font-weight:400;font-size:13px}
+.cls{font-size:20px}
+.notice{background:#22392b;border-radius:12px;padding:12px 14px;font-size:18px;margin-bottom:12px}
+.clue{background:#1f3428;border-radius:8px;padding:6px 10px;margin:4px 0;font-size:14px}
+.clue.lie{border-left:4px solid var(--red)}.clue.dim{opacity:.45}
+.tag{font-size:11px;padding:1px 6px;border-radius:6px;margin-left:6px}.tag.f{background:#6b2525;color:#ffd0d0}
+.players{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:10px}
+.pl{font-size:13px;color:var(--sub)}
+.pl span{display:inline-block;background:#22392b;border-radius:6px;padding:2px 6px;margin:2px;color:var(--text);cursor:pointer}
+#qr img,#qr canvas{background:#fff;padding:8px;border-radius:8px}
+.toast{position:fixed;left:50%;top:14px;transform:translateX(-50%);background:#000d;color:#fff;padding:10px 16px;border-radius:999px;opacity:0;transition:opacity .2s;pointer-events:none;z-index:9}
+.toast.on{opacity:1}
+.hidden{display:none}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div id="app"><div class="card">연결 중…</div></div>
+</div>
+<div class="toast" id="toast"></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<script src="logic.js"></script>
+<script type="module">
+import { db, login, doc, collection, getDoc, setDoc, updateDoc, deleteDoc, onSnapshot, writeBatch, COLORS, N, ROUNDS, GOAL, BLOCK, esc, payout } from './fb.js';
+
+const $app = document.getElementById('app');
+const toast = t => { const el = document.getElementById('toast'); el.textContent = t; el.classList.add('on'); clearTimeout(toast._t); toast._t = setTimeout(() => el.classList.remove('on'), 2500); };
+const LS = 'sagiHostGame';
+let uid, code, gref, G = null, SEC = null, PLAYERS = new Map(), unsub = [], busy = false, showAns = false;
+
+function studentURL() { return location.href.replace(/host\.html.*$/, 'index.html').replace(/#.*$/, '') + '#' + code; }
+function phaseName(s) { return { lobby: '대기 중', bet: '💰 베팅 시간', run: '🏇 경주 중', break: '☕ 작전 시간', pause: '⏸ 일시정지', end: '🏁 경기 종료' }[s] || s; }
+function moveAt(h, r) { return SEC.moves[h * ROUNDS + r]; }
+
+// ---------- 시작 ----------
+(async () => {
+  try { uid = await login(); }
+  catch (e) { $app.innerHTML = `<div class="card">Firebase 익명 로그인에 실패했어요. Authentication에서 '익명'을 켰는지 확인해 주세요.<br><span class="hint">${esc(e.message)}</span></div>`; return; }
+  let saved = null; try { saved = localStorage.getItem(LS); } catch (e) {}
+  if (saved) {
+    const snap = await getDoc(doc(db, 'games', saved)).catch(() => null);
+    if (snap && snap.exists() && snap.data().host === uid && snap.data().status !== 'end') { attach(saved); return; }
+  }
+  renderSetup();
+})();
+
+function renderSetup() {
+  $app.innerHTML = `
+  <h1>🏇 사기경마 · 반별 대결 (교사용)</h1>
+  <div class="card"><h2>새 게임 설정</h2>
+    <div class="grid">
+      <div><label>반 이름 (쉼표로 구분)</label><input id="sClasses" value="1반,2반,3반,4반"></div>
+      <div><label>반마다 단서 수 (6~12)</label><input id="sC" type="number" min="6" max="12" value="10"></div>
+      <div><label>그중 거짓 단서 수</label><input id="sL" type="number" min="0" max="4" value="2"></div>
+      <div><label>베팅 시간 (초)</label><input id="sBet" type="number" min="10" value="45"></div>
+      <div><label>작전 시간 (초, 3·6·9라운드 뒤)</label><input id="sBreak" type="number" min="10" value="90"></div>
+      <div><label>경주 연출 시간 (초)</label><input id="sRun" type="number" min="3" value="5"></div>
+    </div>
+    <p class="hint">모든 반이 같은 경주를 봐요. 단서는 반마다 다르지만, 공개될 때마다 남는 경우의 수가 비슷하도록(같은 난이도) 만들어요. 거짓 단서는 모든 반에서 같은 차례에 섞여 있어요. 단서는 1라운드부터 한 라운드에 하나씩 공개돼요.</p>
+    <div class="row"><button class="btn" id="mk">게임 만들기</button><span class="hint" id="mkMsg"></span></div>
+  </div>
+  <div class="card"><h2>이어하기</h2><div class="row"><input id="resumeCode" placeholder="게임 코드" style="max-width:160px"><button class="btn2" id="resume">불러오기</button></div>
+  <p class="hint">이 브라우저에서 만든 게임만 이어서 진행할 수 있어요.</p></div>`;
+  document.getElementById('mk').onclick = createGame;
+  document.getElementById('resume').onclick = async () => {
+    const c = document.getElementById('resumeCode').value.trim().toUpperCase();
+    const s = await getDoc(doc(db, 'games', c)).catch(() => null);
+    if (!s || !s.exists()) return toast('그런 게임이 없어요');
+    if (s.data().host !== uid) return toast('이 브라우저에서 만든 게임이 아니에요');
+    attach(c);
+  };
+}
+
+async function createGame() {
+  const names = document.getElementById('sClasses').value.split(',').map(s => s.trim()).filter(Boolean).slice(0, 8);
+  const C = Math.max(6, Math.min(12, +document.getElementById('sC').value || 10));
+  const L = Math.max(0, Math.min(4, +document.getElementById('sL').value || 0));
+  const settings = { classes: names.map((n, i) => ({ id: 'c' + (i + 1), name: n })), C, L,
+    betSec: Math.max(10, +document.getElementById('sBet').value || 45),
+    breakSec: Math.max(10, +document.getElementById('sBreak').value || 90),
+    runSec: Math.max(3, +document.getElementById('sRun').value || 5) };
+  if (names.length < 2) return toast('반을 2개 이상 적어 주세요');
+  if (L * 2 >= C) return toast('거짓 단서가 너무 많아요');
+  const btn = document.getElementById('mk'), msg = document.getElementById('mkMsg');
+  btn.disabled = true; msg.textContent = '문제 만드는 중… (몇 초 걸려요)';
+  await new Promise(r => setTimeout(r, 50));
+  const pz = SagiLogic.generatePuzzle(names.length, C, L, t => msg.textContent = t);
+  if (!pz) { btn.disabled = false; msg.textContent = '문제 만들기에 실패했어요. 단서 수를 늘리거나 거짓 수를 줄여 보세요.'; return; }
+  const A = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  code = Array.from({ length: 4 }, () => A[Math.floor(Math.random() * A.length)]).join('');
+  try {
+    await setDoc(doc(db, 'games', code), { host: uid, status: 'lobby', round: 0, pos: new Array(N).fill(0), pool: new Array(N).fill(0), total: 0, revealed: 0, endsAt: 0, settings, createdAt: Date.now() });
+    const b = writeBatch(db);
+    b.set(doc(db, 'games', code, 'secret', 'main'), { truth: pz.truth, moves: pz.moves.flat(), lieSlots: pz.lieSlots, classSets: pz.classSets });
+    settings.classes.forEach(c => b.set(doc(db, 'games', code, 'classes', c.id), { name: c.name, revealed: [] }));
+    await b.commit();
+  } catch (e) { btn.disabled = false; msg.textContent = '저장 실패: ' + e.message; return; }
+  try { localStorage.setItem(LS, code); } catch (e) {}
+  attach(code);
+}
+
+// ---------- 게임 구독 ----------
+async function attach(c) {
+  code = c; gref = doc(db, 'games', code);
+  try { localStorage.setItem(LS, code); } catch (e) {}
+  const s = await getDoc(doc(db, 'games', code, 'secret', 'main'));
+  SEC = s.data();
+  unsub.forEach(f => f()); unsub = [];
+  unsub.push(onSnapshot(gref, snap => { G = snap.data(); render(); }));
+  unsub.push(onSnapshot(collection(db, 'games', code, 'players'), qs => {
+    PLAYERS = new Map(); qs.forEach(d => PLAYERS.set(d.id, d.data())); render();
+  }));
+}
+
+setInterval(() => {
+  if (!G) return;
+  const t = document.getElementById('timer');
+  if (t) t.textContent = timerText();
+  tick();
+}, 300);
+
+function timerText() {
+  if (G.status === 'pause') return Math.ceil((G.remain || 0) / 1000) + '초';
+  if (!['bet', 'run', 'break'].includes(G.status)) return '';
+  const s = Math.max(0, Math.ceil((G.endsAt - Date.now()) / 1000));
+  return s + '초';
+}
+
+// ---------- 진행 (교사 화면이 시계 역할) ----------
+async function tick() {
+  if (busy || !G || !SEC) return;
+  if (!['bet', 'run', 'break'].includes(G.status) || Date.now() < G.endsAt) return;
+  busy = true;
+  try { await advance(); } catch (e) { toast('진행 오류: ' + e.message); }
+  setTimeout(() => busy = false, 600);
+}
+function calcPool() {
+  const pool = new Array(N).fill(0);
+  PLAYERS.forEach(p => p.bets.forEach((v, h) => pool[h] += v));
+  return { pool, total: pool.reduce((a, b) => a + b, 0) };
+}
+async function advance() {
+  const g = G, s = g.settings;
+  if (g.status === 'bet') {
+    const pos = g.pos.map((p, h) => p + moveAt(h, g.round - 1));
+    await updateDoc(gref, { status: 'run', pos, endsAt: Date.now() + s.runSec * 1000 });
+  } else if (g.status === 'run') {
+    const { pool, total } = calcPool();
+    if (g.round >= ROUNDS) return finish(pool, total);
+    if (g.round % 3 === 0) await updateDoc(gref, { status: 'break', pool, total, endsAt: Date.now() + s.breakSec * 1000 });
+    else await startBet(g.round + 1, { pool, total });
+  } else if (g.status === 'break') {
+    await startBet(g.round + 1, {});
+  }
+}
+async function startBet(r, extra) {
+  const s = G.settings, cnt = Math.min(r, s.C);
+  const b = writeBatch(db);
+  if (cnt !== G.revealed) {
+    s.classes.forEach((c, i) => b.update(doc(db, 'games', code, 'classes', c.id), { revealed: SEC.classSets[i].clues.slice(0, cnt).map(x => x.text) }));
+  }
+  b.update(gref, Object.assign({ status: 'bet', round: r, revealed: cnt, endsAt: Date.now() + s.betSec * 1000 }, extra));
+  await b.commit();
+}
+async function finish(pool, total) {
+  const truth = SEC.truth, s = G.settings;
+  const order = [...Array(N).keys()].sort((a, b) => truth[a] - truth[b]);
+  const res = { first: order[0], second: order[1], order, pool, total };
+  const cls = s.classes.map(c => ({ id: c.id, name: c.name, n: 0, sum: 0 }));
+  const all = [];
+  PLAYERS.forEach(p => {
+    const { a, b } = payout(p.bets, res);
+    const score = p.chips + a + b;
+    all.push({ name: p.name, num: p.num, cls: p.cls, score: Math.round(score * 10) / 10 });
+    const k = cls.find(c => c.id === p.cls); if (k) { k.n++; k.sum += score; }
+  });
+  cls.forEach(c => { c.sum = Math.round(c.sum * 10) / 10; c.avg = c.n ? Math.round(c.sum / c.n * 10) / 10 : 0; });
+  cls.sort((a, b) => b.avg - a.avg);
+  all.sort((a, b) => b.score - a.score);
+  res.classes = cls; res.top = all.slice(0, 10);
+  const bt = writeBatch(db);
+  s.classes.forEach((c, i) => bt.update(doc(db, 'games', code, 'classes', c.id), { revealed: SEC.classSets[i].clues.map(x => x.text), answers: SEC.classSets[i].clues }));
+  bt.update(gref, { status: 'end', pool, total, result: res, endsAt: 0, revealed: s.C });
+  await bt.commit();
+  try { localStorage.removeItem(LS); } catch (e) {}
+}
+
+// ---------- 조작 ----------
+let startArm = 0;
+async function startGame() {
+  if (!PLAYERS.size && Date.now() - startArm > 3000) { startArm = Date.now(); return toast('참가자가 없어요. 그래도 시작하려면 한 번 더 누르세요'); }
+  await startBet(1, {});
+}
+async function pauseToggle() {
+  if (G.status === 'pause') await updateDoc(gref, { status: G.pausedFrom, endsAt: Date.now() + (G.remain || 0) });
+  else if (['bet', 'run', 'break'].includes(G.status)) await updateDoc(gref, { status: 'pause', pausedFrom: G.status, remain: Math.max(0, G.endsAt - Date.now()) });
+}
+async function skip() {
+  if (G.status === 'pause') return toast('먼저 재개해 주세요');
+  if (['bet', 'run', 'break'].includes(G.status)) await updateDoc(gref, { endsAt: Date.now() });
+}
+let endArm = 0;
+async function endNow() {
+  if (Date.now() - endArm > 3000) { endArm = Date.now(); return toast('한 번 더 누르면 지금 상태로 바로 정산해요'); }
+  const { pool, total } = calcPool(); await finish(pool, total);
+}
+let kickArm = '';
+async function kick(id) {
+  if (kickArm !== id) { kickArm = id; return toast('한 번 더 누르면 이 참가자를 내보내요'); }
+  kickArm = ''; await deleteDoc(doc(db, 'games', code, 'players', id));
+}
+function newGame() { unsub.forEach(f => f()); unsub = []; G = null; SEC = null; PLAYERS = new Map(); renderSetup(); }
+
+// ---------- 화면 ----------
+function classStats() {
+  const s = G.settings;
+  return s.classes.map(c => {
+    let n = 0, done = 0, chips = 0, bet = 0;
+    PLAYERS.forEach(p => { if (p.cls !== c.id) return; n++; if (p.br === G.round) done++; chips += p.chips; bet += p.bets.reduce((a, b) => a + b, 0); });
+    return { ...c, n, done, chips, bet };
+  });
+}
+function trackHTML() {
+  const T = G.total || 0;
+  return [...Array(N).keys()].map(h => {
+    const p = G.pos[h], P = (G.pool || [])[h] || 0;
+    return `<div class="lane"><div class="num" style="background:${COLORS[h]}">${h + 1}</div>
+      <div class="track"><div class="zone"></div><div class="goal"></div>
+      <div class="horse" style="left:calc(${Math.min(p, GOAL) / GOAL} * (100% - 40px))">🏇</div><div class="cell">${p}칸</div></div>
+      <div class="odds">${P ? (T / P).toFixed(1) + '배' : '-'}<small>칩 ${P}</small></div></div>`;
+  }).join('');
+}
+function answersHTML() {
+  const s = G.settings;
+  const order = [...Array(N).keys()].sort((a, b) => SEC.truth[a] - SEC.truth[b]).map(h => h + 1).join(' → ');
+  return `<p><b>정답 순위:</b> ${order}</p>` + s.classes.map((c, i) => `<p style="margin:10px 0 4px"><b>${esc(c.name)}</b></p>` +
+    SEC.classSets[i].clues.map((x, k) => `<div class="clue${x.lie ? ' lie' : ''}${k >= (G.revealed || 0) ? ' dim' : ''}">${k + 1}. ${esc(x.text)}${x.lie ? '<span class="tag f">거짓</span>' : ''}</div>`).join('')).join('');
+}
+
+function render() {
+  if (!G || !SEC) return;
+  const s = G.settings;
+  if (G.status === 'lobby') return renderLobby();
+  if (G.status === 'end') return renderEnd();
+  const st = classStats();
+  const notice = G.status === 'break'
+    ? `☕ 작전 시간! 다른 반과 단서를 주고받아도 돼요. 단, 받은 단서가 진짜인지는 아무도 몰라요.`
+    : `📜 각 반에 단서 <b>${G.revealed}</b>/${s.C}개가 공개됐어요. 반마다 단서는 다르고, 전체 ${s.C}개 중 정확히 <b>${s.L}개</b>가 거짓이에요.`;
+  $app.innerHTML = `
+  <div class="top">
+    <div><div class="hint">게임 코드 <b style="color:var(--acc)">${code}</b> · 라운드</div><div class="phase">R${G.round}/${ROUNDS} · ${phaseName(G.status)}</div></div>
+    <div class="timer" id="timer">${timerText()}</div>
+  </div>
+  <div class="notice">${notice}</div>
+  <div class="main">
+    <div class="card">${trackHTML()}<div class="hint">빨간 구간(17칸 이상)에 들어간 말에는 베팅할 수 없어요. 배당은 경주가 끝날 때마다 갱신돼요.</div></div>
+    <div class="card"><h2>반별 현황</h2>
+      <table><tr><th>반</th><th>인원</th><th>${G.status === 'bet' ? '이번 베팅' : '베팅한 칩'}</th><th>남은 칩</th></tr>
+      ${st.map(c => `<tr class="cls"><td>${esc(c.name)}</td><td>${c.n}</td><td>${G.status === 'bet' ? `${c.done}/${c.n}` : c.bet}</td><td>${c.chips}</td></tr>`).join('')}
+      </table>
+      <div class="row" style="margin-top:14px">
+        <button class="btn2" id="bPause">${G.status === 'pause' ? '▶ 재개' : '⏸ 일시정지'}</button>
+        <button class="btn2" id="bSkip">⏭ 다음 단계</button>
+        <button class="danger" id="bEnd">지금 정산</button>
+      </div>
+      <div class="row" style="margin-top:10px"><button class="btn3" id="bAns">${showAns ? '정답 숨기기' : '정답·단서 보기 (교사 전용)'}</button></div>
+      <p class="hint">이 화면이 게임 시계 역할을 해요. 게임이 끝날 때까지 이 창을 닫지 마세요. 새로고침해도 이어서 진행돼요.</p>
+    </div>
+  </div>
+  <div class="card ${showAns ? '' : 'hidden'}"><h2>정답과 반별 단서 (흐린 것은 아직 공개 전)</h2>${showAns ? answersHTML() : ''}</div>`;
+  document.getElementById('bPause').onclick = pauseToggle;
+  document.getElementById('bSkip').onclick = skip;
+  document.getElementById('bEnd').onclick = endNow;
+  document.getElementById('bAns').onclick = () => { showAns = !showAns; render(); };
+}
+
+function renderLobby() {
+  const st = classStats(), url = studentURL();
+  $app.innerHTML = `
+  <h1>🏇 사기경마 · 반별 대결</h1>
+  <div class="main">
+    <div class="card" style="text-align:center">
+      <div class="hint">학생 접속 주소</div>
+      <div style="font-size:20px;word-break:break-all;margin:6px 0">${esc(url)}</div>
+      <div class="hint">게임 코드</div><div class="big">${code}</div>
+      <div id="qr" style="display:flex;justify-content:center;margin-top:10px"></div>
+    </div>
+    <div class="card"><h2>참가자 (${PLAYERS.size}명)</h2>
+      <table>${st.map(c => `<tr class="cls"><td>${esc(c.name)}</td><td>${c.n}명</td></tr>`).join('')}</table>
+      <div class="row" style="margin-top:14px"><button class="btn" id="bStart">게임 시작</button><button class="btn3" id="bNew">새로 만들기</button></div>
+      <p class="hint">시작하면 1라운드 베팅과 함께 첫 단서가 공개돼요. 늦게 들어온 학생도 칩 20개로 참여할 수 있어요.</p>
+    </div>
+  </div>
+  <div class="card"><h2>명단</h2><div class="hint">이름을 두 번 누르면 내보낼 수 있어요 (중복 접속 정리용)</div><div class="players">
+  ${G.settings.classes.map(c => `<div class="pl"><b style="color:var(--text)">${esc(c.name)}</b><br>${[...PLAYERS].filter(([, p]) => p.cls === c.id).sort((a, b) => a[1].num - b[1].num).map(([id, p]) => `<span data-id="${id}">${p.num}. ${esc(p.name)}</span>`).join('')}</div>`).join('')}
+  </div></div>`;
+  try { if (window.QRCode) new QRCode(document.getElementById('qr'), { text: url, width: 220, height: 220 }); } catch (e) {}
+  document.getElementById('bStart').onclick = startGame;
+  document.getElementById('bNew').onclick = newGame;
+  document.querySelectorAll('.pl span').forEach(el => el.onclick = () => kick(el.dataset.id));
+}
+
+function renderEnd() {
+  const r = G.result, s = G.settings;
+  const order = r.order.map(h => `<b style="color:${COLORS[h]}">${h + 1}번</b>`).join(' → ');
+  $app.innerHTML = `
+  <h1>🏁 경기 종료</h1>
+  <div class="card"><div style="font-size:22px">최종 순위: ${order}</div>
+    <p class="hint">1등 ${r.first + 1}번 배당 ${r.pool[r.first] ? (r.total / r.pool[r.first]).toFixed(2) : '-'}배 · 2등 ${r.second + 1}번 배당 ${r.pool[r.second] ? (r.total / r.pool[r.second] / 2).toFixed(2) : '-'}배(절반) · 전체 판돈 ${r.total}칩</p></div>
+  <div class="main">
+    <div class="card"><h2>🏆 반별 순위 (1인 평균 칩)</h2>
+      <table><tr><th>순위</th><th>반</th><th>평균</th><th>합계</th><th>인원</th></tr>
+      ${r.classes.map((c, i) => `<tr class="cls"><td>${i + 1}</td><td>${esc(c.name)}</td><td><b>${c.avg}</b></td><td>${c.sum}</td><td>${c.n}</td></tr>`).join('')}</table></div>
+    <div class="card"><h2>개인 TOP 10</h2>
+      <table>${r.top.map((p, i) => `<tr><td>${i + 1}</td><td>${esc((s.classes.find(c => c.id === p.cls) || {}).name || '')} ${p.num}번 ${esc(p.name)}</td><td><b>${p.score}</b></td></tr>`).join('')}</table></div>
+  </div>
+  <div class="card"><h2>반별 단서 정답 공개</h2>${answersHTML()}</div>
+  <div class="row"><button class="btn" id="bNew">새 게임</button></div>`;
+  document.getElementById('bNew').onclick = newGame;
+}
+</script>
+</body>
+</html>

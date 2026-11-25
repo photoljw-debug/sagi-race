@@ -1,0 +1,61 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function signedIn() { return request.auth != null; }
+
+    match /games/{g} {
+      function gameData() { return get(/databases/$(database)/documents/games/$(g)).data; }
+      function isHost() { return signedIn() && gameData().host == request.auth.uid; }
+      function myPlayer() { return /databases/$(database)/documents/games/$(g)/players/$(request.auth.uid); }
+
+      // 게임 상태: 로그인한 누구나 읽기, 만든 교사만 수정
+      allow read: if signedIn();
+      allow create: if signedIn() && request.resource.data.host == request.auth.uid;
+      allow update, delete: if signedIn() && resource.data.host == request.auth.uid;
+
+      // 정답·레이스·전체 단서: 교사만
+      match /secret/{d} {
+        allow read, write: if isHost();
+      }
+
+      // 반별 공개 단서: 교사와 그 반 학생만 읽기
+      match /classes/{c} {
+        allow read: if isHost() || (signedIn() && exists(myPlayer()) && get(myPlayer()).data.cls == c);
+        allow write: if isHost();
+      }
+
+      // 학생: 자기 문서만. 베팅은 베팅 시간에, 라운드당 1번, 최대 2칩, 17칸 이상 말 금지
+      match /players/{uid} {
+        function validNew() {
+          let d = request.resource.data;
+          return d.keys().hasOnly(['cls', 'num', 'name', 'chips', 'bets', 'br'])
+            && d.chips == 20 && d.br == 0
+            && d.bets == [0, 0, 0, 0, 0, 0, 0, 0]
+            && d.cls is string && d.cls.size() <= 10
+            && d.num is int && d.num >= 1 && d.num <= 99
+            && d.name is string && d.name.size() >= 1 && d.name.size() <= 12
+            && gameData().status != 'end';
+        }
+        function okHorse(n, o, gm, i) { return n.bets[i] >= o.bets[i] && (n.bets[i] == o.bets[i] || gm.pos[i] < 17); }
+        function validBet() {
+          let n = request.resource.data;
+          let o = resource.data;
+          let gm = gameData();
+          let d = (n.bets[0] - o.bets[0]) + (n.bets[1] - o.bets[1]) + (n.bets[2] - o.bets[2]) + (n.bets[3] - o.bets[3])
+                + (n.bets[4] - o.bets[4]) + (n.bets[5] - o.bets[5]) + (n.bets[6] - o.bets[6]) + (n.bets[7] - o.bets[7]);
+          return n.diff(o).affectedKeys().hasOnly(['bets', 'chips', 'br'])
+            && gm.status == 'bet' && n.br == gm.round && o.br != gm.round
+            && n.bets.size() == 8
+            && okHorse(n, o, gm, 0) && okHorse(n, o, gm, 1) && okHorse(n, o, gm, 2) && okHorse(n, o, gm, 3)
+            && okHorse(n, o, gm, 4) && okHorse(n, o, gm, 5) && okHorse(n, o, gm, 6) && okHorse(n, o, gm, 7)
+            && d >= 1 && d <= 2 && n.chips == o.chips - d && n.chips >= 0;
+        }
+        allow read: if isHost() || (signedIn() && request.auth.uid == uid);
+        allow create: if signedIn() && request.auth.uid == uid && validNew();
+        allow update: if signedIn() && request.auth.uid == uid && validBet();
+        allow delete: if isHost();
+      }
+    }
+  }
+}
