@@ -72,7 +72,7 @@ th{color:var(--sub);font-weight:400;font-size:13px}
 <script src="logic.js"></script>
 <script src="sound.js"></script>
 <script type="module">
-import { db, login, doc, collection, getDoc, setDoc, updateDoc, deleteDoc, onSnapshot, writeBatch, COLORS, N, ROUNDS, GOAL, BLOCK, esc, payout } from './fb.js';
+import { db, login, doc, collection, getDoc, getDocs, query, where, setDoc, updateDoc, deleteDoc, onSnapshot, writeBatch, COLORS, N, ROUNDS, GOAL, BLOCK, esc, payout } from './fb.js';
 
 const $app = document.getElementById('app');
 const toast = t => { const el = document.getElementById('toast'); el.textContent = t; el.classList.add('on'); clearTimeout(toast._t); toast._t = setTimeout(() => el.classList.remove('on'), 2500); };
@@ -110,16 +110,67 @@ function renderSetup() {
     <p class="hint">모든 반이 같은 경주를 봐요. 단서는 반마다 다르지만, 공개될 때마다 남는 경우의 수가 비슷하도록(같은 난이도) 만들어요. 거짓 단서는 모든 반에서 같은 차례에 섞여 있어요. 단서는 1라운드부터 한 라운드에 하나씩 공개돼요.</p>
     <div class="row"><button class="btn" id="mk">게임 만들기</button><span class="hint" id="mkMsg"></span></div>
   </div>
-  <div class="card"><h2>이어하기</h2><div class="row"><input id="resumeCode" placeholder="게임 코드" style="max-width:160px"><button class="btn2" id="resume">불러오기</button></div>
-  <p class="hint">이 브라우저에서 만든 게임만 이어서 진행할 수 있어요.</p></div>`;
+  <div class="card"><h2>지난 게임</h2>
+  <p class="hint">이 브라우저에서 만든 게임이에요. <b>같은 문제로 다시</b>를 누르면 정답·단서·경주가 똑같은 판을 새 코드로 만들어요. 베팅·작전·경주 시간은 위 설정 칸의 값이 적용돼요. 진행 중인 게임은 <b>이어하기</b>로 계속할 수 있어요.</p>
+  <div id="pastList" class="hint">불러오는 중…</div></div>`;
   document.getElementById('mk').onclick = createGame;
-  document.getElementById('resume').onclick = async () => {
-    const c = document.getElementById('resumeCode').value.trim().toUpperCase();
-    const s = await getDoc(doc(db, 'games', c)).catch(() => null);
-    if (!s || !s.exists()) return toast('그런 게임이 없어요');
-    if (s.data().host !== uid) return toast('이 브라우저에서 만든 게임이 아니에요');
-    attach(c);
-  };
+  loadPast();
+}
+
+async function loadPast() {
+  const box = document.getElementById('pastList');
+  try {
+    const qs = await getDocs(query(collection(db, 'games'), where('host', '==', uid)));
+    const list = []; qs.forEach(d => list.push({ code: d.id, ...d.data() }));
+    list.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+    if (!list.length) { box.textContent = '아직 만든 게임이 없어요.'; return; }
+    const stName = { lobby: '대기 중', bet: '진행 중', run: '진행 중', break: '진행 중', pause: '일시정지', end: '끝남' };
+    box.innerHTML = '<table><tr><th>코드</th><th>만든 때</th><th>모둠</th><th>상태</th><th></th></tr>' + list.slice(0, 15).map(g => {
+      const dt = g.createdAt ? new Date(g.createdAt).toLocaleString('ko-KR', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '';
+      const groups = (g.settings && g.settings.classes || []).map(c => c.name).join(', ');
+      return `<tr><td><b style="color:var(--acc)">${esc(g.code)}</b>${g.replayOf ? `<br><span class="hint">${esc(g.replayOf)} 다시</span>` : ''}</td><td>${esc(dt)}</td><td>${esc(groups)}</td><td>${stName[g.status] || esc(g.status)}</td>
+        <td style="white-space:nowrap">${g.status !== 'end' ? `<button class="btn3" data-resume="${esc(g.code)}">이어하기</button> ` : ''}<button class="btn2" data-replay="${esc(g.code)}">같은 문제로 다시</button></td></tr>`;
+    }).join('') + '</table>';
+    box.querySelectorAll('[data-resume]').forEach(b => b.onclick = () => attach(b.dataset.resume));
+    box.querySelectorAll('[data-replay]').forEach(b => b.onclick = () => replay(b.dataset.replay, b));
+  } catch (e) { box.textContent = '지난 게임을 불러오지 못했어요: ' + e.message; }
+}
+
+// 같은 문제(정답·단서·경주)로 새 게임 만들기
+async function replay(oldCode, btn) {
+  if (btn) btn.disabled = true;
+  try {
+    const [g, s] = await Promise.all([getDoc(doc(db, 'games', oldCode)), getDoc(doc(db, 'games', oldCode, 'secret', 'main'))]);
+    if (!g.exists() || !s.exists()) { toast('그 게임의 문제를 찾을 수 없어요'); if (btn) btn.disabled = false; return; }
+    const settings = { ...g.data().settings };
+    const num = (id, min, def) => { const el = document.getElementById(id); if (!el) return def; const v = parseInt(el.value, 10); return isNaN(v) ? def : Math.max(min, v); };
+    settings.betSec = num('sBet', 10, settings.betSec);
+    settings.breakSec = num('sBreak', 0, settings.breakSec);
+    settings.runSec = num('sRun', 3, settings.runSec);
+    const ok = await saveGame(settings, s.data(), { replayOf: oldCode });
+    if (!ok && btn) btn.disabled = false;
+  } catch (e) { toast('다시 만들기 실패: ' + e.message); if (btn) btn.disabled = false; }
+}
+
+async function saveGame(settings, secret, extra) {
+  const A = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  let c;
+  for (let i = 0; i < 5; i++) { // 이미 있는 코드와 겹치지 않게
+    c = Array.from({ length: 4 }, () => A[Math.floor(Math.random() * A.length)]).join('');
+    const ex = await getDoc(doc(db, 'games', c)).catch(() => null);
+    if (!ex || !ex.exists()) break;
+  }
+  try {
+    await setDoc(doc(db, 'games', c), Object.assign({ host: uid, status: 'lobby', round: 0, pos: new Array(N).fill(0), pool: new Array(N).fill(0), total: 0, revealed: 0, endsAt: 0, settings, createdAt: Date.now() }, extra || {}));
+    const b = writeBatch(db);
+    b.set(doc(db, 'games', c, 'secret', 'main'), secret);
+    settings.classes.forEach(k => b.set(doc(db, 'games', c, 'classes', k.id), { name: k.name, revealed: [] }));
+    await b.commit();
+  } catch (e) { toast('저장 실패: ' + e.message); return false; }
+  code = c;
+  try { localStorage.setItem(LS, code); } catch (e) {}
+  attach(code);
+  return true;
 }
 
 async function createGame() {
@@ -137,17 +188,8 @@ async function createGame() {
   await new Promise(r => setTimeout(r, 50));
   const pz = SagiLogic.generatePuzzle(names.length, C, L, t => msg.textContent = t);
   if (!pz) { btn.disabled = false; msg.textContent = '문제 만들기에 실패했어요. 단서 수를 늘리거나 거짓 수를 줄여 보세요.'; return; }
-  const A = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
-  code = Array.from({ length: 4 }, () => A[Math.floor(Math.random() * A.length)]).join('');
-  try {
-    await setDoc(doc(db, 'games', code), { host: uid, status: 'lobby', round: 0, pos: new Array(N).fill(0), pool: new Array(N).fill(0), total: 0, revealed: 0, endsAt: 0, settings, createdAt: Date.now() });
-    const b = writeBatch(db);
-    b.set(doc(db, 'games', code, 'secret', 'main'), { truth: pz.truth, moves: pz.moves.flat(), lieSlots: pz.lieSlots, classSets: pz.classSets });
-    settings.classes.forEach(c => b.set(doc(db, 'games', code, 'classes', c.id), { name: c.name, revealed: [] }));
-    await b.commit();
-  } catch (e) { btn.disabled = false; msg.textContent = '저장 실패: ' + e.message; return; }
-  try { localStorage.setItem(LS, code); } catch (e) {}
-  attach(code);
+  const ok = await saveGame(settings, { truth: pz.truth, moves: pz.moves.flat(), lieSlots: pz.lieSlots, classSets: pz.classSets });
+  if (!ok) { btn.disabled = false; msg.textContent = ''; }
 }
 
 // ---------- 게임 구독 ----------
@@ -409,8 +451,10 @@ function renderEnd() {
       <table>${r.top.map((p, i) => `<tr><td>${i + 1}</td><td>${esc((s.classes.find(c => c.id === p.cls) || {}).name || '')} ${p.num}번 ${esc(p.name)}</td><td><b>${p.score}</b></td></tr>`).join('')}</table></div>
   </div>
   <div class="card"><h2>반별 단서 정답 공개</h2>${answersHTML()}</div>
-  <div class="row"><button class="btn" id="bNew">새 게임</button></div>`;
+  <div class="row"><button class="btn" id="bReplay">🔁 같은 문제로 다시</button><button class="btn2" id="bNew">새 게임</button></div>
+  <p class="hint">같은 문제로 다시: 정답·단서·경주가 똑같은 판을 새 코드로 만들어요. 학생들은 새 QR로 다시 들어와요.</p>`;
   document.getElementById('bNew').onclick = newGame;
+  document.getElementById('bReplay').onclick = e => replay(code, e.target);
 }
 </script>
 </body>
