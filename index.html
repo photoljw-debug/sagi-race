@@ -79,10 +79,12 @@ const $app = document.getElementById('app');
 const toast = t => { const el = document.getElementById('toast'); el.textContent = t; el.classList.add('on'); clearTimeout(toast._t); toast._t = setTimeout(() => el.classList.remove('on'), 2200); };
 let uid, code, G = null, ME = null, CL = null, pending = new Array(N).fill(0), sending = false, sus = new Set(), lastSeen = 0;
 
-const RULES = `<details><summary>📖 규칙 보기</summary><ul>
+const START = () => (G && G.settings && G.settings.startChips) || 20;
+const MAXB = () => (G && G.settings && G.settings.maxBet) || MAXBET;
+const RULES = () => `<details><summary>📖 규칙 보기</summary><ul>
 <li>순위는 이미 정해져 있어요. 1·2등 말을 추리해서 베팅하세요.</li>
 <li>말 8마리가 12라운드 동안 20칸 코스를 달려요.</li>
-<li>라운드마다 최대 2칩까지 걸 수 있고, 베팅 시간이 끝나기 전까지는 몇 번이든 바꿀 수 있어요. 마감 때 확정된 베팅만 반영돼요. 17칸 이상 들어간 말에는 베팅할 수 없어요.</li>
+<li>처음에 칩 ${START()}개를 받아요. 라운드마다 최대 ${MAXB()}칩까지 걸 수 있고, 베팅 시간이 끝나기 전까지는 몇 번이든 바꿀 수 있어요. 마감 때 확정된 베팅만 반영돼요. 17칸 이상 들어간 말에는 베팅할 수 없어요.</li>
 <li>단서는 라운드마다 하나씩 우리 반에게만 공개돼요. 반마다 단서가 달라요.</li>
 <li>단서 중 몇 개는 거짓이에요. 개수만 알려 줘요. 거짓 같은 단서는 눌러서 지워 두세요.</li>
 <li>다른 반과 정보를 나눠도 되고, 속여도 돼요. 하지만 다른 반 단서가 진짜라는 보장은 없어요.</li>
@@ -120,7 +122,7 @@ async function enter() {
   document.getElementById('join').onclick = async () => {
     const cls = document.getElementById('cls').value, num = parseInt(document.getElementById('num').value, 10), name = document.getElementById('name').value.trim();
     if (!(num >= 1 && num <= 99) || !name) return toast('번호와 이름을 입력해 주세요');
-    try { await setDoc(doc(db, 'games', code, 'players', uid), { cls, num, name, chips: 20, bets: new Array(N).fill(0), br: 0, cur: new Array(N).fill(0) }); subscribe(); }
+    try { await setDoc(doc(db, 'games', code, 'players', uid), { cls, num, name, chips: START(), bets: new Array(N).fill(0), br: 0, cur: new Array(N).fill(0) }); subscribe(); }
     catch (e) { toast('참가 실패: ' + e.message); }
   };
 }
@@ -216,7 +218,7 @@ function render() {
     <div class="banner">단서는 모두 <b>${s.C}개</b>이고, 그중 정확히 <b>${s.L}개</b>가 거짓이에요. 라운드마다 하나씩 공개돼요.</div>
     ${clues || '<div class="hint">게임이 시작되면 첫 단서가 공개돼요.</div>'}
     <div class="hint">거짓 같은 단서를 누르면 줄을 그어 둘 수 있어요 (나만 보여요).</div></div>
-  <div class="card">${RULES}</div>`;
+  <div class="card">${RULES()}</div>`;
   document.querySelectorAll('.lane').forEach(el => el.onclick = () => tap(+el.dataset.h));
   document.querySelectorAll('.clue').forEach(el => el.onclick = () => { const i = +el.dataset.i; sus.has(i) ? sus.delete(i) : sus.add(i); try { localStorage.setItem('sagiSus_' + code, JSON.stringify([...sus])); } catch (e) {} render(); });
   if (rev.length > lastSeen && lastSeen > 0) toast('📜 새 단서가 공개됐어요!');
@@ -231,7 +233,7 @@ function renderBar() {
   if (G.status === 'lobby') msg = '선생님이 시작하면 베팅할 수 있어요.';
   else if (G.status !== 'bet') msg = '베팅 시간이 아니에요.';
   else if (same && svSum) msg = `✅ ${desc(sv)} 확정 · 마감 전까지 바꿀 수 있어요`;
-  else if (same) msg = `이번 라운드 베팅 0/${MAXBET}칩 · 말을 탭해서 고르세요`;
+  else if (same) msg = `이번 라운드 베팅 0/${MAXB()}칩 · 말을 탭해서 고르세요`;
   else msg = `<b style="color:var(--acc)">${pend ? desc(pending) : '베팅 없음'}</b> · <b>확정</b>을 눌러야 반영돼요`;
   document.getElementById('barMsg').innerHTML = msg;
   const go = document.getElementById('goBtn');
@@ -244,7 +246,7 @@ function tap(h) {
   if (!canBet()) return toast('지금은 베팅 시간이 아니에요');
   if (G.pos[h] >= BLOCK) return toast('17칸 이상 들어간 말에는 베팅할 수 없어요');
   const pend = sum(pending);
-  if (pend >= MAXBET) return toast('최대 2칩이에요. 바꾸려면 초기화 후 다시 고르세요');
+  if (pend >= MAXB()) return toast(`최대 ${MAXB()}칩이에요. 바꾸려면 초기화 후 다시 고르세요`);
   if (ME.chips + sum(saved()) - pend <= 0) return toast('칩이 없어요');
   pending[h]++; dirty = true; render();
 }

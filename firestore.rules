@@ -25,13 +25,13 @@ service cloud.firestore {
         allow write: if isHost();
       }
 
-      // 학생: 자기 문서만. 베팅 시간 안에서 이번 라운드 베팅(최대 2칩)을 몇 번이든 바꿀 수 있음.
+      // 학생: 자기 문서만. 베팅 시간 안에서 이번 라운드 베팅(최대 maxBet칩, 기본 2)을 몇 번이든 바꿀 수 있음. 시작 칩은 startChips(기본 20)
       // 17칸 이상 들어간 말에는 베팅 금지
       match /players/{uid} {
         function validNew() {
           let d = request.resource.data;
           return d.keys().hasOnly(['cls', 'num', 'name', 'chips', 'bets', 'br', 'cur'])
-            && d.chips == 20 && d.br == 0
+            && d.chips == gameData().settings.get('startChips', 20) && d.br == 0
             && d.bets == [0, 0, 0, 0, 0, 0, 0, 0]
             && d.cur == [0, 0, 0, 0, 0, 0, 0, 0]
             && d.cls is string && d.cls.size() <= 10
@@ -57,7 +57,7 @@ service cloud.firestore {
             && n.bets.size() == 8 && n.cur.size() == 8
             && okHorse(n, o, gm, 0) && okHorse(n, o, gm, 1) && okHorse(n, o, gm, 2) && okHorse(n, o, gm, 3)
             && okHorse(n, o, gm, 4) && okHorse(n, o, gm, 5) && okHorse(n, o, gm, 6) && okHorse(n, o, gm, 7)
-            && curSum(n.cur) <= 2
+            && curSum(n.cur) <= gm.settings.get('maxBet', 2)
             && n.chips == o.chips + oldSum - curSum(n.cur) && n.chips >= 0;
         }
         allow read: if isHost() || (signedIn() && request.auth.uid == uid);

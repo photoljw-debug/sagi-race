@@ -106,12 +106,14 @@ function renderSetup() {
       <div><label>베팅 시간 (초)</label><input id="sBet" type="number" min="10" value="45"></div>
       <div><label>작전 시간 (초, 3·6·9라운드 뒤 · 0이면 없음)</label><input id="sBreak" type="number" min="0" value="0"></div>
       <div><label>경주 연출 시간 (초)</label><input id="sRun" type="number" min="3" value="5"></div>
+      <div><label>1인당 시작 칩 (5~100)</label><input id="sChips" type="number" min="5" max="100" value="20"></div>
+      <div><label>라운드당 최대 베팅 칩 (1~10)</label><input id="sMaxBet" type="number" min="1" max="10" value="2"></div>
     </div>
     <p class="hint">모든 반이 같은 경주를 봐요. 단서는 반마다 다르지만, 공개될 때마다 남는 경우의 수가 비슷하도록(같은 난이도) 만들어요. 거짓 단서는 모든 반에서 같은 차례에 섞여 있어요. 단서는 1라운드부터 한 라운드에 하나씩 공개돼요.</p>
     <div class="row"><button class="btn" id="mk">게임 만들기</button><span class="hint" id="mkMsg"></span></div>
   </div>
   <div class="card"><h2>지난 게임</h2>
-  <p class="hint">이 브라우저에서 만든 게임이에요. <b>같은 문제로 다시</b>를 누르면 정답·단서·경주가 똑같은 판을 새 코드로 만들어요. 베팅·작전·경주 시간은 위 설정 칸의 값이 적용돼요. 진행 중인 게임은 <b>이어하기</b>로 계속할 수 있어요.</p>
+  <p class="hint">이 브라우저에서 만든 게임이에요. <b>같은 문제로 다시</b>를 누르면 정답·단서·경주가 똑같은 판을 새 코드로 만들어요. 베팅·작전·경주 시간과 시작 칩·최대 베팅 칩은 위 설정 칸의 값이 적용돼요. 진행 중인 게임은 <b>이어하기</b>로 계속할 수 있어요.</p>
   <div id="pastList" class="hint">불러오는 중…</div></div>`;
   document.getElementById('mk').onclick = createGame;
   loadPast();
@@ -147,6 +149,8 @@ async function replay(oldCode, btn) {
     settings.betSec = num('sBet', 10, settings.betSec);
     settings.breakSec = num('sBreak', 0, settings.breakSec);
     settings.runSec = num('sRun', 3, settings.runSec);
+    settings.startChips = Math.min(100, num('sChips', 5, settings.startChips || 20));
+    settings.maxBet = Math.min(10, num('sMaxBet', 1, settings.maxBet || 2));
     const ok = await saveGame(settings, s.data(), { replayOf: oldCode });
     if (!ok && btn) btn.disabled = false;
   } catch (e) { toast('다시 만들기 실패: ' + e.message); if (btn) btn.disabled = false; }
@@ -180,7 +184,9 @@ async function createGame() {
   const settings = { classes: names.map((n, i) => ({ id: 'c' + (i + 1), name: n })), C, L,
     betSec: Math.max(10, +document.getElementById('sBet').value || 45),
     breakSec: Math.max(0, parseInt(document.getElementById('sBreak').value, 10) || 0),
-    runSec: Math.max(3, +document.getElementById('sRun').value || 5) };
+    runSec: Math.max(3, +document.getElementById('sRun').value || 5),
+    startChips: Math.max(5, Math.min(100, parseInt(document.getElementById('sChips').value, 10) || 20)),
+    maxBet: Math.max(1, Math.min(10, parseInt(document.getElementById('sMaxBet').value, 10) || 2)) };
   if (names.length < 2) return toast('반을 2개 이상 적어 주세요');
   if (L * 2 >= C) return toast('거짓 단서가 너무 많아요');
   const btn = document.getElementById('mk'), msg = document.getElementById('mkMsg');
@@ -424,7 +430,7 @@ function renderLobby() {
     <div class="card"><h2>참가자 (${PLAYERS.size}명)</h2>
       <table>${st.map(c => `<tr class="cls"><td>${esc(c.name)}</td><td>${c.n}명</td></tr>`).join('')}</table>
       <div class="row" style="margin-top:14px"><button class="btn" id="bStart">게임 시작</button><button class="btn3" id="bNew">새로 만들기</button></div>
-      <p class="hint">시작하면 1라운드 베팅과 함께 첫 단서가 공개돼요. 늦게 들어온 학생도 칩 20개로 참여할 수 있어요.</p>
+      <p class="hint">시작하면 1라운드 베팅과 함께 첫 단서가 공개돼요. 늦게 들어온 학생도 칩 ${(G.settings.startChips || 20)}개로 참여할 수 있어요. (1인 시작 칩 ${(G.settings.startChips || 20)}개 · 라운드당 최대 ${(G.settings.maxBet || 2)}칩)</p>
     </div>
   </div>
   <div class="card"><h2>명단</h2><div class="hint">이름을 두 번 누르면 내보낼 수 있어요 (중복 접속 정리용)</div><div class="players">
